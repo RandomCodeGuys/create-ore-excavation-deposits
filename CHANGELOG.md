@@ -2,15 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 0.1.1
 
 ### Balance
 - **`core_spawn_probability` default lowered from `0.02` to `0.0005`** (40× sparser). Playtesting at the original density made deposits feel ubiquitous; new default lands ~1 placed deposit per 5–10k chunks once biome/distance filters apply, which suits the exploration-driven progression the mod is built around. Existing worlds keep their saved value — only fresh `coedeposits-common.toml` files get the new default.
 
-### Internal
-- Multi-loader/multi-MC repo layout: per-loader subprojects under `NeoForge/`, future `Fabric/` / `Forge/`. CI auto-detects subprojects via `hashFiles`.
-- Map toggle widget now anchored top-left of Xaero map (was top-right) — Xaero corners are all crowded; `map_button_anchor` config lets users flip back.
-- Dev runtime gained Create: Steam 'n' Rails + Architectury + FTB Chunks stack for cross-mod coexistence testing.
+### UI
+- Map toggle widget now anchored top-left of Xaero's world map (was top-right). Every Xaero corner is occupied by its own button cluster, so the new default sits the widget on the left edge ~50px down — clear of Xaero's own controls and of Create: Steam 'n' Rails' Train Routes toggle.
+- New `map_button_anchor` config (`LEFT` / `RIGHT`) lets users flip the widget back to the right edge if preferred. `map_button_x_offset` semantics changed from "pixels from right edge" to "pixels from anchored edge".
+
+### Repository / CI
+- Multi-loader / multi-MC repo layout: per-loader subprojects under `NeoForge/`, future `Fabric/` and `Forge/` slot in beside it without polluting each other's classpaths.
+- `.github/workflows/publish.yml` auto-detects which `<Loader>/build.gradle` files exist on the branch and builds + publishes each, so a branch with only `NeoForge/` ships only the NeoForge jar.
+- Release type pinned to `ALPHA` until the SavedData codec stabilises.
+
+### Documentation
+- TOML comment + README field table for `core_spawn_probability` now spell out the full chain: 1 candidate roll → biome+distance filter → 4-30-chunk blob expansion → ~1 placed deposit per 5-10k chunks.
 
 ## 0.1.0 — initial release
 
