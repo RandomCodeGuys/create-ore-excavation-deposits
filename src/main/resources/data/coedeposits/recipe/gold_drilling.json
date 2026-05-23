@@ -1,0 +1,9 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {"tag": "createoreexcavation:drills"},
+  "output": [{"id": "minecraft:raw_gold"}],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 120,
+  "veinId": "coedeposits:gold_vein"
+}

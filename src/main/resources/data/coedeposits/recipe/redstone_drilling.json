@@ -1,0 +1,9 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {"tag": "createoreexcavation:drills"},
+  "output": [{"id": "minecraft:redstone"}],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 80,
+  "veinId": "coedeposits:redstone_vein"
+}

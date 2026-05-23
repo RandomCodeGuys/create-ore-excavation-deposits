@@ -1,0 +1,33 @@
+{
+  "coedeposits.configuration.title": "Настройки Coedeposits",
+
+  "key.categories.coedeposits": "Coedeposits",
+  "key.coedeposits.toggle_overlay": "Показ залежей на карте",
+
+
+  "deposit.coedeposits.coal": "Угольная залежь",
+  "deposit.coedeposits.iron": "Железная залежь",
+  "deposit.coedeposits.copper": "Медная залежь",
+  "deposit.coedeposits.zinc": "Цинковая залежь",
+  "deposit.coedeposits.redstone": "Залежь редстоуна",
+  "deposit.coedeposits.lapis": "Залежь лазурита",
+  "deposit.coedeposits.gold": "Золотая залежь",
+  "deposit.coedeposits.emerald": "Изумрудная залежь",
+  "deposit.coedeposits.diamond": "Алмазная залежь",
+  "deposit.coedeposits.quartz": "Кварцевая залежь",
+  "deposit.coedeposits.glowstone": "Залежь светопыли",
+  "deposit.coedeposits.nether_quartz": "Залежь незерского кварца",
+  "deposit.coedeposits.nether_gold": "Залежь незерского золота",
+  "deposit.coedeposits.ancient_debris": "Залежь древних обломков",
+
+  "coedeposits.map.toggle.button": "Отображение залежей",
+  "coedeposits.map.toggle.tooltip.on": "Залежи видны — нажмите чтобы скрыть",
+  "coedeposits.map.toggle.tooltip.off": "Залежи скрыты — нажмите чтобы показать",
+
+  "coedeposits.tooltip.location": "у %s, %s",
+  "coedeposits.tooltip.stats": "чанков: %s",
+  "coedeposits.tooltip.chunk_remaining": "в этом чанке: %s / %s ед.",
+  "coedeposits.tooltip.chunk_depleted": "в этом чанке: исчерпано",
+  "coedeposits.tooltip.chunk_infinite": "в этом чанке: бесконечно",
+  "coedeposits.tooltip.chunk_unknown": "в этом чанке: не загружен на сервере"
+}

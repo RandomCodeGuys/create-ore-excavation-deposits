@@ -1,0 +1,172 @@
+{
+  "_comment": "coedeposits — single source-of-truth deposit registry. Top-level keys are deposit ids (namespace:path). Edit and run /reload to refresh in-game. To restore defaults, delete this file — it will be regenerated on next server start.",
+  "_layout_note": "Entries are grouped by dimension via the `dimensions` field on each one. Every entry also declares an explicit `biome_filter` so there are no surprise spawns in unintended biomes.",
+
+  "coedeposits:coal": {
+    "vein_recipe": "coedeposits:coal_vein",
+    "items": [{"item": "minecraft:coal", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 6, "max": 40},
+    "per_chunk_units": {"min": 30000, "max": 300000},
+    "weight": 200,
+    "map_color": 2236962,
+    "biome_filter": ["minecraft:is_forest", "minecraft:is_taiga", "c:is_swamp", "c:is_plains"]
+  },
+
+  "coedeposits:iron": {
+    "vein_recipe": "coedeposits:iron_vein",
+    "items": [{"item": "minecraft:raw_iron", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 4, "max": 30},
+    "per_chunk_units": {"min": 20000, "max": 200000},
+    "weight": 150,
+    "map_color": 12895428,
+    "biome_filter": ["c:is_mountain", "minecraft:is_taiga", "minecraft:is_hill"]
+  },
+
+  "coedeposits:copper": {
+    "vein_recipe": "coedeposits:copper_vein",
+    "items": [{"item": "minecraft:raw_copper", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 4, "max": 30},
+    "per_chunk_units": {"min": 25000, "max": 200000},
+    "weight": 180,
+    "map_color": 13395507,
+    "biome_filter": ["c:is_mountain", "minecraft:is_jungle", "c:is_dripstone_caves"]
+  },
+
+  "coedeposits:zinc": {
+    "vein_recipe": "coedeposits:zinc_vein",
+    "items": [{"item": "create:raw_zinc", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 3, "max": 18},
+    "per_chunk_units": {"min": 15000, "max": 120000},
+    "weight": 80,
+    "map_color": 12895390,
+    "biome_filter": ["c:is_mountain", "minecraft:is_savanna", "minecraft:is_badlands"]
+  },
+
+  "coedeposits:redstone": {
+    "vein_recipe": "coedeposits:redstone_vein",
+    "items": [{"item": "minecraft:redstone", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 3, "max": 12},
+    "per_chunk_units": {"min": 12000, "max": 90000},
+    "weight": 80,
+    "map_color": 13369344,
+    "biome_filter": ["minecraft:is_badlands", "c:is_desert", "c:is_dry/overworld"]
+  },
+
+  "coedeposits:lapis": {
+    "vein_recipe": "coedeposits:lapis_vein",
+    "items": [{"item": "minecraft:lapis_lazuli", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 500, "max": 99999},
+    "size_chunks": {"min": 2, "max": 8},
+    "per_chunk_units": {"min": 8000, "max": 50000},
+    "weight": 50,
+    "map_color": 3368652,
+    "biome_filter": ["c:is_mountain", "minecraft:is_savanna"]
+  },
+
+  "coedeposits:gold": {
+    "vein_recipe": "coedeposits:gold_vein",
+    "items": [{"item": "minecraft:raw_gold", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 1000, "max": 99999},
+    "size_chunks": {"min": 3, "max": 12},
+    "per_chunk_units": {"min": 10000, "max": 80000},
+    "weight": 40,
+    "map_color": 16763955,
+    "biome_filter": ["minecraft:is_badlands", "minecraft:is_savanna", "c:is_hot/overworld"]
+  },
+
+  "coedeposits:emerald": {
+    "vein_recipe": "coedeposits:emerald_vein",
+    "items": [{"item": "minecraft:emerald", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 2000, "max": 99999},
+    "size_chunks": {"min": 2, "max": 5},
+    "per_chunk_units": {"min": 3000, "max": 25000},
+    "weight": 15,
+    "map_color": 3394662,
+    "biome_filter": ["c:is_mountain", "minecraft:is_taiga"]
+  },
+
+  "coedeposits:diamond": {
+    "vein_recipe": "coedeposits:diamond_vein",
+    "items": [{"item": "minecraft:diamond", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 3000, "max": 99999},
+    "size_chunks": {"min": 2, "max": 4},
+    "per_chunk_units": {"min": 2500, "max": 20000},
+    "weight": 10,
+    "map_color": 6737407,
+    "biome_filter": ["c:is_mountain", "c:is_cold/overworld", "c:is_icy"]
+  },
+
+  "coedeposits:quartz": {
+    "vein_recipe": "coedeposits:quartz_vein",
+    "items": [{"item": "minecraft:quartz", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 4, "max": 20},
+    "per_chunk_units": {"min": 20000, "max": 180000},
+    "weight": 100,
+    "map_color": 15790824,
+    "biome_filter": ["minecraft:is_badlands", "minecraft:is_savanna", "c:is_hot/overworld", "c:is_dry/overworld"]
+  },
+
+  "coedeposits:glowstone": {
+    "vein_recipe": "coedeposits:glowstone_vein",
+    "items": [{"item": "minecraft:glowstone_dust", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:overworld",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 2, "max": 10},
+    "per_chunk_units": {"min": 8000, "max": 60000},
+    "weight": 60,
+    "map_color": 16777130,
+    "biome_filter": ["minecraft:is_badlands", "c:is_hot/overworld", "c:is_dry/overworld"]
+  },
+
+  "coedeposits:nether_quartz": {
+    "vein_recipe": "coedeposits:nether_quartz_vein",
+    "items": [{"item": "minecraft:quartz", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:the_nether",
+    "distance": {"min": 0, "max": 99999},
+    "size_chunks": {"min": 4, "max": 25},
+    "per_chunk_units": {"min": 25000, "max": 220000},
+    "weight": 220,
+    "map_color": 15790824,
+    "biome_filter": ["minecraft:is_nether"]
+  },
+
+  "coedeposits:nether_gold": {
+    "vein_recipe": "coedeposits:nether_gold_vein",
+    "items": [{"item": "minecraft:raw_gold", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:the_nether",
+    "distance": {"min": 500, "max": 99999},
+    "size_chunks": {"min": 3, "max": 15},
+    "per_chunk_units": {"min": 12000, "max": 90000},
+    "weight": 90,
+    "map_color": 16763955,
+    "biome_filter": ["minecraft:is_nether"]
+  },
+
+  "coedeposits:ancient_debris": {
+    "vein_recipe": "coedeposits:ancient_debris_vein",
+    "items": [{"item": "minecraft:netherite_scrap", "weight": 1, "min": 1, "max": 1}],
+    "dimensions": "minecraft:the_nether",
+    "distance": {"min": 2500, "max": 99999},
+    "size_chunks": {"min": 2, "max": 5},
+    "per_chunk_units": {"min": 800, "max": 6000},
+    "weight": 12,
+    "map_color": 4862784,
+    "biome_filter": ["minecraft:is_nether"]
+  }
+}

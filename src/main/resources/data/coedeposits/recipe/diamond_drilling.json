@@ -1,0 +1,9 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {"tag": "createoreexcavation:drills"},
+  "output": [{"id": "minecraft:diamond"}],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 200,
+  "veinId": "coedeposits:diamond_vein"
+}

@@ -1,0 +1,9 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {"tag": "createoreexcavation:drills"},
+  "output": [{"id": "minecraft:netherite_scrap"}],
+  "priority": 0,
+  "stress": 1024,
+  "ticks": 600,
+  "veinId": "coedeposits:ancient_debris_vein"
+}

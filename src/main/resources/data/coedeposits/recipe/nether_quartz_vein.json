@@ -1,0 +1,10 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Nether Quartz Deposit\"}",
+  "priority": 0,
+  "finite": "always",
+  "amountMultiplierMin": 2.0,
+  "amountMultiplierMax": 25.0,
+  "placement": {"salt": 1762100200, "separation": 8, "spacing": 256},
+  "icon": {"count": 1, "id": "minecraft:quartz"}
+}

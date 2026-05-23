@@ -1,0 +1,10 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Lapis Deposit\"}",
+  "priority": 0,
+  "finite": "always",
+  "amountMultiplierMin": 1.0,
+  "amountMultiplierMax": 10.0,
+  "placement": {"salt": 1762100006, "separation": 8, "spacing": 256},
+  "icon": {"count": 1, "id": "minecraft:lapis_lazuli"}
+}

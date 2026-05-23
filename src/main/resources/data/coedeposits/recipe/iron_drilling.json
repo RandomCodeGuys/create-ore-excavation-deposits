@@ -1,0 +1,9 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {"tag": "createoreexcavation:drills"},
+  "output": [{"id": "minecraft:raw_iron"}],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 100,
+  "veinId": "coedeposits:iron_vein"
+}
