@@ -31,16 +31,14 @@ sourceSets.main.resources {
 }
 
 repositories {
-    // COE (Create Ore Excavation) jar is consumed from local Maven cache (~/.m2).
-    // To (re)publish it from the cloned source:
-    //   cd ../../Create-Ore-Excavation/NeoForge
-    //   ./gradlew publishToMavenLocal
-    // Resulting coords: com.tom5454.createoreexcavation:CreateOreExcavation-1.21:1.6.8
-    // (see dependencies {} block below).
+    // mavenLocal stays available as an escape hatch — useful for testing
+    // pre-release builds of dependencies via `./gradlew publishToMavenLocal`
+    // in their source tree. Not relied on by the published build.
     mavenLocal()
 
-    // Modrinth maven — publishes most open mods as deobf jars. We use it for
-    // Xaero's World Map (compile-time reference for the mixin into GuiMap).
+    // Modrinth maven — publishes most open mods (including COE itself) as
+    // deobf jars. Used for COE, Xaero's World Map, JEI, Jade, Chunky, C2ME.
+    // Reproducible on any CI runner; no local jar setup needed.
     exclusiveContent {
         forRepository {
             maven {
@@ -143,22 +141,22 @@ configurations {
 }
 
 dependencies {
-    // COE — host mod we extend. compileOnly because the player's modpack ships
-    // its own COE jar at runtime (we don't bundle it). neoforge.mods.toml
-    // declares createoreexcavation as a required dependency for the loader.
+    // COE — host mod we extend. compileOnly because the player's modpack
+    // ships its own COE jar at runtime (we don't bundle it). neoforge.mods.toml
+    // declares createoreexcavation as a required loader-level dependency.
     //
-    // If COE's API changes, rebuild it locally and the new jar will be picked up:
-    //   cd ../../Create-Ore-Excavation/NeoForge && ./gradlew publishToMavenLocal
-    compileOnly "com.tom5454.createoreexcavation:CreateOreExcavation-1.21:1.6.8"
+    // Pinned to Modrinth version_id `tivxiPTo` = COE 1.21.1-1.6.8 (NeoForge).
+    // Modrinth publishes one version_id per loader-version so this coord is
+    // unambiguous; bumping COE means looking up the new version_id, not just
+    // the version_number. See:
+    //   /v2/project/create-ore-excavation/version?game_versions=["1.21.1"]&loaders=["neoforge"]
+    compileOnly "maven.modrinth:create-ore-excavation:tivxiPTo"
 
-    // localRuntime: same jar is fed into runClient/runServer dev-runs so the mod
-    // can actually load (we declared createoreexcavation as required in mods.toml).
-    // transitive = false because COE's POM references Create+Flywheel+Ponder+
-    // Registrate from mavens we don't have configured — those deps must be
-    // dropped into ./run/mods/ manually (or copied via setupDevMods task below).
-    localRuntime("com.tom5454.createoreexcavation:CreateOreExcavation-1.21:1.6.8") {
-        transitive = false
-    }
+    // localRuntime: same jar feeds runClient/runServer dev-runs so the mod
+    // can actually load (we declared createoreexcavation as required in
+    // mods.toml). Modrinth's deobf jar is fully self-contained for runtime,
+    // but Create/Flywheel/Ponder/Registrate still need to be in ./run/mods/.
+    localRuntime "maven.modrinth:create-ore-excavation:tivxiPTo"
 
     // Xaero's World Map — compileOnly for mixin into xaero.map.gui.GuiMap. Runtime
     // jar is already in ./run/mods/. Modrinth maven coord follows the pattern
