@@ -186,9 +186,10 @@ And the drilling recipe — `data/<ns>/recipe/<name>_drilling.json`:
 
 | Key | Default | Purpose |
 |---|---:|---|
-| `map_button_enabled` | `true` | Show the compact toggle widget on Xaero's world map. Disable if it overlaps another mod's UI (e.g. Create: Steam 'n' Rails' Train Routes toggle). The keybind still works. |
-| `map_button_x_offset` | 21 | Pixels from the right edge of the map screen to the widget's left edge. |
-| `map_button_y_offset` | 5 | Pixels from the top edge of the map screen to the widget's top edge. Increase to push the widget below another mod's UI. |
+| `map_button_enabled` | `true` | Show the compact toggle widget on Xaero's world map. Disable if it overlaps another mod's UI. The keybind still works. |
+| `map_button_anchor` | `"LEFT"` | Edge to anchor the widget to: `LEFT` or `RIGHT`. |
+| `map_button_x_offset` | 5 | Pixels from the anchored edge to the widget. |
+| `map_button_y_offset` | 50 | Pixels from the top edge. Default 50 sits the widget below Xaero's corner button cluster — every Xaero corner has its own buttons (settings, layers, zoom, waypoints), so the mid-edge area is the only reliably-clear strip. |
 
 The `key.coedeposits.toggle_overlay` keybind (Options → Controls → Coedeposits) is the always-available fallback when the widget is disabled or covered.
 

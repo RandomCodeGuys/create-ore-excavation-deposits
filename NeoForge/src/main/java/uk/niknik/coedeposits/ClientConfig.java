@@ -66,25 +66,28 @@ public final class ClientConfig {
             .defineEnum("map_button_anchor", Anchor.LEFT);
 
     /**
-     * Pixels from the anchored edge to the widget. Default 35 sits the
-     * widget just to the right of Xaero's settings (⚙) icon when anchored
-     * LEFT, with breathing room.
+     * Pixels from the anchored edge to the widget. Small default (5px)
+     * because the widget is now placed below the corner button cluster
+     * via {@link #MAP_BUTTON_Y_OFFSET}, not next to it.
      */
     public static final ModConfigSpec.IntValue MAP_BUTTON_X_OFFSET = BUILDER
             .comment("Pixels from the anchored edge to the nearest side of the 16-px-wide widget.",
-                    "Default 35 sits the widget just to the right of Xaero's settings (⚙) icon",
-                    "when anchored LEFT, with breathing room.")
-            .defineInRange("map_button_x_offset", 35, 0, 4000);
+                    "Default 5 hugs the edge. Combined with map_button_y_offset to position the widget.")
+            .defineInRange("map_button_x_offset", 5, 0, 4000);
 
     /**
-     * Pixels from the top edge of the map screen to the widget's top edge.
-     * Increase to push the widget below another mod's UI at the same column.
+     * Pixels from the top edge of the map screen to the widget. Default
+     * 50 sits the widget on the left edge BELOW Xaero's own corner button
+     * cluster (settings ⚙, layers, mode switches) — every Xaero corner
+     * is crowded, so the only reliably-clear strip is the mid-edge area.
      */
     public static final ModConfigSpec.IntValue MAP_BUTTON_Y_OFFSET = BUILDER
             .comment("Pixels from the top edge of the map screen to the widget's top edge.",
-                    "Increase to push the widget below another mod's UI at the same column",
-                    "(e.g. 26 = below a 16-px widget + 10-px gap).")
-            .defineInRange("map_button_y_offset", 5, 0, 2000);
+                    "Default 50 sits the widget below Xaero's corner button cluster — every",
+                    "Xaero corner has buttons (settings, layers, zoom, waypoints, etc.) so the",
+                    "mid-edge area is the only reliably-clear strip. Bump higher to slide",
+                    "down further; set 5 to put it in the corner if you don't care about overlap.")
+            .defineInRange("map_button_y_offset", 50, 0, 2000);
 
     /** Built once at class-init, registered by {@link CoedepositsClient}. */
     public static final ModConfigSpec SPEC = BUILDER.build();
