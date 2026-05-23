@@ -72,10 +72,17 @@ public class Config {
      * Roll per loaded chunk — if {@code rng.nextFloat() &lt; this}, the chunk
      * tries to become a deposit core. Combined with biome/distance filters,
      * not every roll produces a deposit.
+     *
+     * <p>Default 0.0005 ≈ 1 candidate-core per 2000 chunks. With the typical
+     * blob size (4–30 chunks) and biome filtering, this lands ~1 placed
+     * deposit per 5–10k chunks, which leaves room for exploration without
+     * tripping over an ore vein every few minutes.
      */
     public static final ModConfigSpec.DoubleValue CORE_SPAWN_PROBABILITY = BUILDER
-            .comment("Per-chunk probability of becoming a new deposit core.")
-            .defineInRange("core_spawn_probability", 0.02, 0.0, 1.0);
+            .comment("Per-chunk probability of becoming a new deposit core.",
+                    "Default 0.0005 ≈ 1 candidate per 2000 chunks — sparse enough that finding",
+                    "a deposit feels like a reward. Bump up (e.g. 0.01–0.05) for denser maps.")
+            .defineInRange("core_spawn_probability", 0.0005, 0.0, 1.0);
 
     /**
      * Per-deposit gradient floor. Core chunk gets 100% of its rolled amountMul,

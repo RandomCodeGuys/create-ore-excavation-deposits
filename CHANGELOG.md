@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+### Balance
+- **`core_spawn_probability` default lowered from `0.02` to `0.0005`** (40× sparser). Playtesting at the original density made deposits feel ubiquitous; new default lands ~1 placed deposit per 5–10k chunks once biome/distance filters apply, which suits the exploration-driven progression the mod is built around. Existing worlds keep their saved value — only fresh `coedeposits-common.toml` files get the new default.
+
+### Internal
+- Multi-loader/multi-MC repo layout: per-loader subprojects under `NeoForge/`, future `Fabric/` / `Forge/`. CI auto-detects subprojects via `hashFiles`.
+- Map toggle widget now anchored top-left of Xaero map (was top-right) — Xaero corners are all crowded; `map_button_anchor` config lets users flip back.
+- Dev runtime gained Create: Steam 'n' Rails + Architectury + FTB Chunks stack for cross-mod coexistence testing.
+
 ## 0.1.0 — initial release
 
 First public release. Multi-chunk ore deposits add-on for Create Ore Excavation on NeoForge 1.21.1.
