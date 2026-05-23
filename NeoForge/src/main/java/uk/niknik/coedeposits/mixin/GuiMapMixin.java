@@ -49,7 +49,11 @@ public abstract class GuiMapMixin extends Screen {
     @Inject(method = "init", at = @At("TAIL"))
     public void coedeposits$addToggleButton(CallbackInfo ci) {
         if (!ClientConfig.MAP_BUTTON_ENABLED.get()) return;
-        int x = this.width - ClientConfig.MAP_BUTTON_X_OFFSET.get();
+        int xOffset = ClientConfig.MAP_BUTTON_X_OFFSET.get();
+        int x = switch (ClientConfig.MAP_BUTTON_ANCHOR.get()) {
+            case LEFT  -> xOffset;
+            case RIGHT -> this.width - xOffset;
+        };
         int y = ClientConfig.MAP_BUTTON_Y_OFFSET.get();
         this.addRenderableWidget(new DepositToggleWidget(x, y));
     }

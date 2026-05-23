@@ -1,6 +1,11 @@
 package uk.niknik.coedeposits;
 
+import java.util.Locale;
+
+import net.minecraft.util.StringRepresentable;
 import net.neoforged.neoforge.common.ModConfigSpec;
+
+import com.mojang.serialization.Codec;
 
 /**
  * Client-only configuration. Lives at
@@ -20,6 +25,21 @@ import net.neoforged.neoforge.common.ModConfigSpec;
 public final class ClientConfig {
     private ClientConfig() {}
 
+    /**
+     * Which screen edge the toggle widget anchors to. {@link #MAP_BUTTON_X_OFFSET}
+     * is measured from that edge to the widget's nearest side.
+     */
+    public enum Anchor implements StringRepresentable {
+        LEFT, RIGHT;
+
+        public static final Codec<Anchor> CODEC = StringRepresentable.fromEnum(Anchor::values);
+
+        @Override
+        public String getSerializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     /**
@@ -35,15 +55,26 @@ public final class ClientConfig {
             .define("map_button_enabled", true);
 
     /**
-     * Pixels from the right edge of the map screen to the widget's left
-     * edge. Default 21 leaves a 5-px gap against the right edge for the
-     * 16-px-wide widget.
+     * Which screen edge the widget anchors to. Default LEFT keeps it away
+     * from Xaero's own top-right controls (zoom / mode buttons) and from
+     * Create: Steam 'n' Rails' Train Routes toggle, which both sit on the
+     * right.
+     */
+    public static final ModConfigSpec.EnumValue<Anchor> MAP_BUTTON_ANCHOR = BUILDER
+            .comment("Edge to anchor the widget to. LEFT (default) or RIGHT.",
+                    "Combined with map_button_x_offset to position the widget.")
+            .defineEnum("map_button_anchor", Anchor.LEFT);
+
+    /**
+     * Pixels from the anchored edge to the widget. Default 35 sits the
+     * widget just to the right of Xaero's settings (⚙) icon when anchored
+     * LEFT, with breathing room.
      */
     public static final ModConfigSpec.IntValue MAP_BUTTON_X_OFFSET = BUILDER
-            .comment("Pixels from the right edge of the map screen to the widget's left edge.",
-                    "Default 21 leaves a 5-px gap against the right edge for the 16-px-wide widget.",
-                    "Increase to push the widget further left (e.g. past another mod's UI column).")
-            .defineInRange("map_button_x_offset", 21, 0, 4000);
+            .comment("Pixels from the anchored edge to the nearest side of the 16-px-wide widget.",
+                    "Default 35 sits the widget just to the right of Xaero's settings (⚙) icon",
+                    "when anchored LEFT, with breathing room.")
+            .defineInRange("map_button_x_offset", 35, 0, 4000);
 
     /**
      * Pixels from the top edge of the map screen to the widget's top edge.
