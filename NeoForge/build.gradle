@@ -180,12 +180,29 @@ dependencies {
     //   Steam 'n' Rails      — Create add-on for trains; coexist test (their map button vs ours)
     //                          Note: project slug is "create-steam-n-rails-1.21.1" because the
     //                          1.21.1 port is hosted as a separate Modrinth project.
+    //   Architectury API     — required by FTB Chunks (which itself is manual-drop from CurseForge,
+    //                          see below). Architectury IS on Modrinth, so pulled via maven cleanly.
     localRuntime "maven.modrinth:jei:YAcQ6elZ"
     localRuntime "maven.modrinth:jade:yd8FKCmx"
     localRuntime "maven.modrinth:chunky:LuFhm4eU"
     localRuntime "maven.modrinth:c2me-neoforge:KmfiVd28"
     localRuntime "maven.modrinth:create-steam-n-rails-1.21.1:oQKsMKfj"
+    localRuntime "maven.modrinth:architectury-api:ZxYGwlk0"
 }
+
+// FTB mods (Chunks/Library/Teams) are CurseForge-only — Modrinth has none of
+// them under any known slug. They live in NeoForge/run/mods/ via manual drop
+// (gitignored). Currently pinned versions in dev:
+//
+//   ftb-chunks-neoforge-2101.1.14.jar   (CF fileId 7608681)
+//   ftb-library-neoforge-2101.1.31.jar  (CF fileId 7746959)
+//   ftb-teams-neoforge-2101.1.10.jar    (CF fileId 7878281)
+//
+// Direct CDN URLs follow https://mediafilez.forgecdn.net/files/<fid/1000>/<fid%1000>/<name>.
+// Bump by checking https://api.cfwidget.com/<projectId>:
+//   FTB Chunks   = projectId 314906
+//   FTB Library  = projectId 404465
+//   FTB Teams    = projectId 404468
 
 // To finish the dev modpack so runClient actually boots, drop these jars into
 // ./run/mods/ (created on first run by ModDev — or run mkdir manually):
