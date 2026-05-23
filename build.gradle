@@ -279,9 +279,11 @@ publishMods {
 
     modrinth {
         accessToken = providers.environmentVariable("MODRINTH_TOKEN")
-        // Slug or ID of the Modrinth project. Replace this once the project
-        // is created on Modrinth — must be set before the first publishMods run.
-        projectId = "create-ore-excavation-deposits"
+        // Modrinth project id (the 8-char alphanumeric, not the slug).
+        // Using the id directly avoids a slug→id lookup that fails for
+        // draft/unlisted projects until they've been approved at least once.
+        // See https://modrinth.com/project/create-ore-excavation-deposits
+        projectId = "XfN8l56o"
         minecraftVersions.add(minecraft_version)
 
         requires {
