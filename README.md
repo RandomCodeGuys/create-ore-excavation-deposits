@@ -228,6 +228,40 @@ The placement RNG is fully deterministic on `(depositSeed, chunkX, chunkZ)` + bi
 
 This works if both worlds also share spawn position and biomes at the relevant chunks (the placement also depends on those). The seed override is persisted per-dimension in SavedData and survives restarts.
 
+## Repository layout
+
+The repository is organised as one **subproject per loader** so multiple Minecraft versions and loaders coexist without cross-polluting classpaths. Branches map to Minecraft versions; subfolders within a branch map to loaders Create Ore Excavation supports on that Minecraft version.
+
+```
+create-ore-excavation-deposits/
+├── README.md / CHANGELOG.md / LICENSE     ← repo-wide meta
+├── .github/workflows/publish.yml          ← multi-loader CI
+├── NeoForge/                              ← independent Gradle project
+│   ├── src/main/java/...
+│   ├── build.gradle
+│   └── gradlew
+└── Fabric/   or   Forge/                  ← added per-branch as COE coverage permits
+    └── ...
+```
+
+Branch / loader matrix (mirrors COE's own coverage):
+
+| Branch | NeoForge | Fabric | Forge |
+|---|---|---|---|
+| `main` (1.21.1) | ✅ | — | — |
+| `1.20.1` | — | _planned_ | _planned_ |
+| `1.19.2` | — | _planned_ | _planned_ |
+| `1.19.1`, `1.19`, `1.18.2` | — | — | _planned_ |
+
+## Building
+
+```bash
+cd NeoForge          # or Fabric/ / Forge/ — pick the loader you want
+./gradlew build      # → build/libs/coedeposits-<version>.jar
+```
+
+CI (`.github/workflows/publish.yml`) auto-detects which `<Loader>/build.gradle` files exist on the branch and builds + publishes each — no per-branch workflow tweaks needed.
+
 ## License
 
 MIT — see `LICENSE`.
