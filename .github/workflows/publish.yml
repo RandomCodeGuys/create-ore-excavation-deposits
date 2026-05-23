@@ -8,7 +8,13 @@ name: Publish to Modrinth
 #   3. Repo is the canonical RandomCodeGuys/create-ore-excavation-deposits —
 #      forks can't trigger publish even if they push a matching tag.
 #
-# Manual trigger is also exposed via workflow_dispatch for hotfix scenarios
+# Per-loader build layout:
+#   The repository is structured as <Loader>/ subprojects (NeoForge/, and
+#   later Fabric/, Forge/). Each subproject has its own ./gradlew. The job
+#   builds + publishes every subproject present in the branch. Releases
+#   from a branch where only NeoForge/ exists ship only the NeoForge jar.
+#
+# Manual trigger via workflow_dispatch is also exposed for hotfix scenarios
 # where a tag already exists and you want to re-run publication.
 on:
   push:
@@ -34,7 +40,6 @@ jobs:
       - name: Checkout (full history for main-ancestry check)
         uses: actions/checkout@v4
         with:
-          # Need history so `git merge-base --is-ancestor` works against main.
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
 
@@ -60,20 +65,77 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Make gradlew executable
-        run: chmod +x ./gradlew
+      # --- NeoForge subproject ----------------------------------------------
+      - name: Make NeoForge gradlew executable
+        if: hashFiles('NeoForge/gradlew') != ''
+        run: chmod +x ./NeoForge/gradlew
 
-      - name: Build
+      - name: Build NeoForge
+        if: hashFiles('NeoForge/build.gradle') != ''
+        working-directory: ./NeoForge
         run: ./gradlew build -Pmod_version=${{ env.RELEASE_VERSION }}
 
-      - name: Publish to Modrinth
+      - name: Publish NeoForge to Modrinth
+        if: hashFiles('NeoForge/build.gradle') != ''
+        working-directory: ./NeoForge
         env:
           MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
         run: ./gradlew publishMods -Pmod_version=${{ env.RELEASE_VERSION }}
 
-      - name: Upload jar to GitHub release
+      - name: Upload NeoForge jar to GitHub release
+        if: hashFiles('NeoForge/build.gradle') != ''
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.RELEASE_TAG }}
-          files: build/libs/coedeposits-${{ env.RELEASE_VERSION }}.jar
+          files: NeoForge/build/libs/coedeposits-${{ env.RELEASE_VERSION }}.jar
+          generate_release_notes: true
+
+      # --- Fabric subproject (future — gated by hashFiles) -----------------
+      - name: Make Fabric gradlew executable
+        if: hashFiles('Fabric/gradlew') != ''
+        run: chmod +x ./Fabric/gradlew
+
+      - name: Build Fabric
+        if: hashFiles('Fabric/build.gradle') != ''
+        working-directory: ./Fabric
+        run: ./gradlew build -Pmod_version=${{ env.RELEASE_VERSION }}
+
+      - name: Publish Fabric to Modrinth
+        if: hashFiles('Fabric/build.gradle') != ''
+        working-directory: ./Fabric
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: ./gradlew publishMods -Pmod_version=${{ env.RELEASE_VERSION }}
+
+      - name: Upload Fabric jar to GitHub release
+        if: hashFiles('Fabric/build.gradle') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: Fabric/build/libs/coedeposits-${{ env.RELEASE_VERSION }}.jar
+          generate_release_notes: true
+
+      # --- Forge subproject (older MC branches only) -----------------------
+      - name: Make Forge gradlew executable
+        if: hashFiles('Forge/gradlew') != ''
+        run: chmod +x ./Forge/gradlew
+
+      - name: Build Forge
+        if: hashFiles('Forge/build.gradle') != ''
+        working-directory: ./Forge
+        run: ./gradlew build -Pmod_version=${{ env.RELEASE_VERSION }}
+
+      - name: Publish Forge to Modrinth
+        if: hashFiles('Forge/build.gradle') != ''
+        working-directory: ./Forge
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: ./gradlew publishMods -Pmod_version=${{ env.RELEASE_VERSION }}
+
+      - name: Upload Forge jar to GitHub release
+        if: hashFiles('Forge/build.gradle') != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: Forge/build/libs/coedeposits-${{ env.RELEASE_VERSION }}.jar
           generate_release_notes: true
