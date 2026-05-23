@@ -79,9 +79,13 @@ public class Config {
      * tripping over an ore vein every few minutes.
      */
     public static final ModConfigSpec.DoubleValue CORE_SPAWN_PROBABILITY = BUILDER
-            .comment("Per-chunk probability of becoming a new deposit core.",
-                    "Default 0.0005 ≈ 1 candidate per 2000 chunks — sparse enough that finding",
-                    "a deposit feels like a reward. Bump up (e.g. 0.01–0.05) for denser maps.")
+            .comment("Per-chunk probability of triggering a new deposit core candidate.",
+                    "Default 0.0005 — 1 candidate roll per ~2000 chunks. After biome + distance",
+                    "filters reject most candidates and the surviving ones expand into 4-30-chunk",
+                    "blobs, expect roughly:",
+                    "  • 1 placed deposit per ~5,000-10,000 explored chunks",
+                    "  • ~1 chunk in ~300-500 ends up belonging to some deposit",
+                    "Bump up to 0.005-0.05 for denser maps; drop to 0.0001 for true-rarity worlds.")
             .defineInRange("core_spawn_probability", 0.0005, 0.0, 1.0);
 
     /**

@@ -173,7 +173,7 @@ And the drilling recipe — `data/<ns>/recipe/<name>_drilling.json`:
 |---|---:|---|
 | `base_radius` | 1000 | Block radius where the log curve transitions (tier ≈ 0.5). |
 | `max_radius` | 25000 | Block distance at which tier saturates to ~1.0. |
-| `core_spawn_probability` | 0.0005 | Per-chunk roll to become a deposit core. ~1 candidate per 2000 chunks. Bump to 0.01–0.05 for denser maps. |
+| `core_spawn_probability` | 0.0005 | Per-chunk roll for a deposit-core candidate. 1 roll per ~2000 chunks; after biome+distance filters + 4-30-chunk blob expansion → ~1 placed deposit per 5-10k chunks (~1 chunk in 300-500 belongs to a deposit). |
 | `edge_amount_mul` | 0.3 | Per-chunk gradient floor — edges get this fraction of the core amount. |
 | `prospect_radius` | 2000 | Block radius pre-scanned on server start (0 = disabled, max 16000). |
 | `unbounded_growth` | 50.0 | Growth coefficient when `per_chunk_units.max` is absent. |
