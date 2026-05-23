@@ -3,6 +3,10 @@ plugins {
     id 'maven-publish'
     id 'net.neoforged.moddev' version '2.0.141'
     id 'idea'
+    // me.modmuss50.mod-publish-plugin — drives `./gradlew publishMods` to
+    // push the built jar to Modrinth (and optionally CurseForge). Used by
+    // .github/workflows/publish.yml on every v* tag.
+    id 'me.modmuss50.mod-publish-plugin' version '0.7.4'
 }
 
 tasks.named('wrapper', Wrapper).configure {
@@ -238,5 +242,58 @@ idea {
     module {
         downloadSources = true
         downloadJavadoc = true
+    }
+}
+
+// ---- Modrinth publishing ----------------------------------------------------
+// `./gradlew publishMods` uploads build/libs/coedeposits-<ver>.jar to the
+// Modrinth project. Triggered locally with MODRINTH_TOKEN env var, or via
+// .github/workflows/publish.yml on every `v*` tag push (token from
+// repo secret MODRINTH_TOKEN).
+//
+// One-time setup:
+//   1. Create the project on https://modrinth.com/mods/create — copy its slug
+//      (e.g. "create-ore-excavation-deposits") into modrinth.projectId below.
+//   2. Generate an API token at https://modrinth.com/settings/pats with
+//      scopes: Read+Write versions. Store it as the GitHub repo secret
+//      MODRINTH_TOKEN (Settings → Secrets and variables → Actions).
+//
+// Release flow:
+//   1. Bump mod_version in gradle.properties.
+//   2. Update CHANGELOG.md with the new entry.
+//   3. git tag v0.2.0 && git push origin v0.2.0
+//   4. GHA picks up the tag, builds, and publishes automatically.
+publishMods {
+    file = tasks.jar.archiveFile
+
+    // Read the latest CHANGELOG.md entry (everything from the first "## " to
+    // the next "## ", or the whole file if there's only one entry).
+    changelog = providers.provider {
+        def f = file('CHANGELOG.md')
+        if (!f.exists()) return "See https://github.com/RandomCodeGuys/create-ore-excavation-deposits/commits/main for changes."
+        def text = f.text
+        def matcher = text =~ /(?s)## .*?(?=\n## |\z)/
+        return matcher.find() ? matcher.group(0).trim() : text
+    }
+
+    type = STABLE
+    modLoaders.add("neoforge")
+
+    modrinth {
+        accessToken = providers.environmentVariable("MODRINTH_TOKEN")
+        // Slug or ID of the Modrinth project. Replace this once the project
+        // is created on Modrinth — must be set before the first publishMods run.
+        projectId = "create-ore-excavation-deposits"
+        minecraftVersions.add(minecraft_version)
+
+        requires {
+            slug = "create-ore-excavation"
+        }
+        optional {
+            slug = "xaeros-world-map"
+        }
+        optional {
+            slug = "xaeros-minimap"
+        }
     }
 }
