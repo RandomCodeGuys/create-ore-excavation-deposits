@@ -274,7 +274,11 @@ publishMods {
         return matcher.find() ? matcher.group(0).trim() : text
     }
 
-    type = STABLE
+    // ALPHA while the mod is still iterating fast — schema/CODECs/RNG seed
+    // semantics may still shift between minor versions. Bump to BETA when
+    // worldgen + commands stabilise, STABLE when SavedData format is frozen
+    // and there's been a feedback round from real-world play.
+    type = ALPHA
     modLoaders.add("neoforge")
 
     modrinth {
