@@ -82,7 +82,9 @@ public final class CoedepositsClientEvents {
         @SubscribeEvent
         public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
             DepositClientCache.clear();
-            Coedeposits.LOGGER.debug("[coedeposits] client cache cleared on disconnect");
+            if (uk.niknik.coedeposits.ClientConfig.LOG_CLIENT_SYNC.get()) {
+                Coedeposits.LOGGER.info("[coedeposits] client cache cleared on disconnect");
+            }
         }
     }
 }

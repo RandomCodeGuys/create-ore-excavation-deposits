@@ -17,17 +17,18 @@ import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.deposit.Deposit;
 import uk.niknik.coedeposits.deposit.DepositType;
-import uk.niknik.coedeposits.gen.ProspectScanner;
+import uk.niknik.coedeposits.gen.PickerInstaller;
+import uk.niknik.coedeposits.gen.ProspectScanQueue;
 import uk.niknik.coedeposits.network.CoedepositsNetwork;
 import uk.niknik.coedeposits.store.DepositSavedData;
 
 /**
  * Two server-tick jobs piggy-backed on the same per-player loop:
  * <ol>
- *   <li><b>Prospect scan</b> — re-runs the dry-run picker around each player as
- *       they explore so the world map fills in beyond the initial spawn area.
- *       Triggered when the player drifts more than half a prospect-radius from
- *       their last scan centre.</li>
+ *   <li><b>Prospect scan enqueue</b> — when a player has roamed more than half
+ *       a prospect-radius from their last scan centre, enqueue an async scan
+ *       around their current position into {@link ProspectScanQueue}. Cheap on
+ *       the tick — the actual picker work runs on the queue's worker thread.</li>
  *   <li><b>ON_DISCOVERY reveal</b> — for every saved deposit whose effective
  *       reveal mode is {@link Config.RevealMode#ON_DISCOVERY}, checks whether
  *       the player is now within {@link Config#DISCOVERY_RADIUS_BLOCKS} of any
@@ -35,31 +36,44 @@ import uk.niknik.coedeposits.store.DepositSavedData;
  *       the one-shot sync + chat notification.</li>
  * </ol>
  *
- * <p>Both jobs use the same 200-tick (10s) cadence — discovery latency of up
- * to 10s when walking up to a deposit is acceptable and saves a per-tick scan.
+ * <p>The 200-tick cadence applies to both jobs — discovery latency of up to
+ * 10s when walking up to a deposit is acceptable, and the prospect-scan
+ * trigger doesn't need to fire faster than the player can cross a prospect
+ * radius. The queue's materialize phase, however, runs <i>every</i> tick at
+ * {@code prospect_chunks_per_tick} budget so pending placements drain
+ * smoothly without bursting on the same 200-tick beat.
  */
 @EventBusSubscriber(modid = Coedeposits.MODID)
 public final class PlayerRoamProspectListener {
     private PlayerRoamProspectListener() {}
 
-    /** How often we check player positions — 200 ticks = 10 seconds. */
+    /** How often we re-check player positions for scan-enqueue + ON_DISCOVERY reveal — 200 ticks = 10 seconds. */
     private static final int CHECK_INTERVAL_TICKS = 200;
 
-    /** Per-player last position where we ran a scan; reset when player rejoins. */
+    /** Per-player last position where we enqueued a scan; reset when player rejoins. */
     private static final Map<UUID, BlockPos> lastScanCenter = new HashMap<>();
 
     /**
-     * Tick handler — every 200 ticks, for each online player:
-     * <ol>
-     *   <li>If they've roamed more than {@code prospect_radius / 2} blocks
-     *       since the previous scan, run an incremental prospect scan.</li>
-     *   <li>Walk the deposit registry once and reveal any ON_DISCOVERY deposit
-     *       within {@code discovery_radius_blocks} of the player.</li>
-     * </ol>
+     * Tick handler — two cadences:
+     * <ul>
+     *   <li><b>Every tick</b>: drain up to {@link Config#PROSPECT_CHUNKS_PER_TICK}
+     *       placements from each enabled level's queue. Cheap when the queue is
+     *       empty (early return on {@code pendingPlacements.isEmpty()}).</li>
+     *   <li><b>Every 200 ticks</b>: for each online player, enqueue a scan if
+     *       they've roamed past the trigger, then sweep ON_DISCOVERY reveals.</li>
+     * </ul>
      */
     @SubscribeEvent
     public static void onServerTick(ServerTickEvent.Post event) {
         var server = event.getServer();
+
+        // Per-tick: drain materialize queue for every managed level. Cheap when
+        // idle so unconditional invocation is fine.
+        int budget = Config.PROSPECT_CHUNKS_PER_TICK.get();
+        for (ServerLevel lvl : PickerInstaller.enabledLevels(server)) {
+            ProspectScanQueue.INSTANCE.tickMaterialize(lvl, budget);
+        }
+
         if (server.getTickCount() % CHECK_INTERVAL_TICKS != 0) return;
         int prospectRadius = Config.PROSPECT_RADIUS.get();
         int discoveryRadius = Config.DISCOVERY_RADIUS_BLOCKS.get();
@@ -73,11 +87,11 @@ public final class PlayerRoamProspectListener {
             if (!Config.isDimensionEnabled(lvl.dimension().location())) continue;
             BlockPos current = p.blockPosition();
 
-            // Job 1: incremental prospect scan
+            // Job 1: incremental prospect scan (enqueue — actual work is async).
             if (prospectRadius > 0) {
                 BlockPos last = lastScanCenter.get(p.getUUID());
                 if (last == null || distSq(last, current) > prospectTriggerSq) {
-                    ProspectScanner.scanAround(lvl, current, prospectRadius);
+                    ProspectScanQueue.INSTANCE.enqueue(lvl, current, prospectRadius);
                     lastScanCenter.put(p.getUUID(), current);
                 }
             }
@@ -96,15 +110,27 @@ public final class PlayerRoamProspectListener {
         DepositSavedData store = DepositSavedData.get(lvl);
         if (store.all().isEmpty()) return;
         UUID pid = player.getUUID();
+        // O(deposits) per player per check interval. Filters short-circuit in
+        // this order: already-revealed > wrong-mode > out-of-range > network.
+        // Most deposits hit "already revealed" fast and the loop body is cheap.
         for (Deposit dep : store.all().values()) {
+            // Filter 1: skip deposits this player already discovered.
             if (store.isRevealed(pid, dep.id())) continue;
+            // Filter 2: skip non-ON_DISCOVERY modes — ON_PROSPECT is handled
+            // by VeinFinderListener, ALWAYS/ON_PROXIMITY never need a reveal.
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
             Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
             if (mode != Config.RevealMode.ON_DISCOVERY) continue;
+            // Filter 3: spatial proximity to any of the deposit's chunks.
             if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
+            // Trigger the reveal — revealAndNotify is idempotent (returns
+            // false if the reveal already happened in a race), so logging
+            // only fires on the genuine first discovery.
             if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
-                Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
-                        player.getName().getString(), dep.name());
+                if (Config.LOG_DISCOVERY.get()) {
+                    Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
+                            player.getName().getString(), dep.name());
+                }
             }
         }
     }

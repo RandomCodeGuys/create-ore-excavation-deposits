@@ -32,19 +32,35 @@ public final class PlayerJoinSyncListener {
     @SubscribeEvent
     public static void onPlayerJoin(PlayerEvent.PlayerLoggedInEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer sp)) return;
+
+        // Counters track total deposits known server-side vs ones the player
+        // can see (reveal-filtered). Used purely for the diagnostic log below.
         int total = 0;
         int visible = 0;
+
+        // ── Per-dimension sync: one packet per managed level ────────────────
+        // Each enabled dimension has its own DepositSavedData. We filter
+        // visibility per-dim because reveal state is per-deposit (which is
+        // implicitly per-dim — deposits don't migrate across dims) and the
+        // client cache lookups also key on dimension id.
         for (ServerLevel lvl : PickerInstaller.enabledLevels(sp.getServer())) {
             DepositSavedData store = DepositSavedData.get(lvl);
             if (store.all().isEmpty()) continue;
             total += store.all().size();
+            // buildVisible applies the reveal-mode filter: ALWAYS/ON_PROXIMITY
+            // pass through, ON_DISCOVERY/ON_PROSPECT need an explicit reveal
+            // record for this player.
             List<DepositSnapshot> snapshots = CoedepositsNetwork.buildVisible(
                     lvl, store, sp, store.all().values());
             if (snapshots.isEmpty()) continue;
             visible += snapshots.size();
             CoedepositsNetwork.sendSync(sp, new DepositSyncPayload(snapshots));
         }
-        if (total > 0) {
+
+        // Single summary line — quieter than logging per dim, and tells the
+        // admin both the visibility breakdown (X/Y) and how many dims got
+        // synced. Skipped entirely when total=0 (no deposits placed anywhere).
+        if (total > 0 && Config.LOG_LIFECYCLE.get()) {
             Coedeposits.LOGGER.info("[coedeposits] synced {}/{} deposits to {} on login across {} dim(s)",
                     visible, total, sp.getName().getString(),
                     Config.enabledDimensions().size());

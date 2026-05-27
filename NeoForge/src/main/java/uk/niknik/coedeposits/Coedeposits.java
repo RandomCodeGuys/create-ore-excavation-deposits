@@ -4,17 +4,21 @@ import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
 
+import net.minecraft.server.packs.PackType;
+
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.AddPackFindersEvent;
 import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import uk.niknik.coedeposits.command.CoedepositsCommand;
 import uk.niknik.coedeposits.deposit.DepositTypeLoader;
 import uk.niknik.coedeposits.gen.PickerInstaller;
+import uk.niknik.coedeposits.pack.BundledRecipePackProvider;
 
 /**
  * Mod entry point. Wires the global registries and event listeners:
@@ -50,10 +54,40 @@ public class Coedeposits {
      * to game-bus events via {@link NeoForge#EVENT_BUS}.
      */
     public Coedeposits(IEventBus modEventBus, ModContainer modContainer) {
+        // ── Step 1: register the COMMON config ──────────────────────────────
+        // Lives at <world>/serverconfig/coedeposits-common.toml on dedicated
+        // servers, run/config/ in dev. CLIENT config is registered separately
+        // in CoedepositsClient (only loaded on client distribution).
         modContainer.registerConfig(ModConfig.Type.COMMON, Config.SPEC);
+
+        // ── Step 2: wire game-bus event listeners ───────────────────────────
+        // AddReloadListenerEvent + RegisterCommandsEvent both fire on every
+        // /reload, so the deposit registry and command tree stay in sync with
+        // datapack changes. Method references keep the listener identities
+        // stable across reloads (NeoForge would otherwise reject duplicates).
         NeoForge.EVENT_BUS.addListener(Coedeposits::onAddReloadListeners);
         NeoForge.EVENT_BUS.addListener(Coedeposits::onRegisterCommands);
+
+        // ── Step 3: register the picker installer's @SubscribeEvent methods ─
+        // Class-level register (not addListener) so both onServerStarted AND
+        // onServerStopping are picked up. PickerInstaller doesn't have an
+        // @EventBusSubscriber so we wire it imperatively here.
         NeoForge.EVENT_BUS.register(PickerInstaller.class);
+
+        // ── Step 4: register virtual datapack for inline recipes ─────────────
+        // AddPackFindersEvent fires on the MOD bus (not game bus) during
+        // PackRepository construction. Our BundledRecipePackProvider injects
+        // a pack whose resources are synthesised from deposits.json — admin
+        // describes vein + drilling in one config file, no separate datapack
+        // required.
+        modEventBus.addListener(Coedeposits::onAddPackFinders);
+    }
+
+    /** Inject the {@link BundledRecipePackProvider} for server-data reloads. */
+    private static void onAddPackFinders(AddPackFindersEvent event) {
+        if (event.getPackType() == PackType.SERVER_DATA) {
+            event.addRepositorySource(new BundledRecipePackProvider());
+        }
     }
 
     /** Registers the deposits.json loader so server start and {@code /reload} pick up changes. */

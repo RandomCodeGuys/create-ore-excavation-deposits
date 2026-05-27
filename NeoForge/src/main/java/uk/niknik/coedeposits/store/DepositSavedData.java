@@ -88,15 +88,26 @@ public class DepositSavedData extends SavedData {
 
     /** Deserialization factory — called by NeoForge when the .dat file exists. */
     private static DepositSavedData load(CompoundTag tag, HolderLookup.Provider lookup) {
+        // Build a fresh instance — caller (NeoForge SavedData factory) wants
+        // an instance even on parse failure (will be empty rather than null,
+        // mod still functions with no deposits rather than crashing).
         DepositSavedData out = new DepositSavedData();
         Storage.CODEC.parse(NbtOps.INSTANCE, tag)
                 .resultOrPartial(err -> Coedeposits.LOGGER.error(
                         "[coedeposits] failed to load SavedData: {}", err))
                 .ifPresent(s -> {
+                    // ── Step 1: re-index every deposit via addInternal ──────
+                    // addInternal (not add) — we don't want setDirty during
+                    // load, NeoForge handles the clean/dirty bit for us. Also
+                    // populates chunkIndex which is what powers lookup().
                     s.all().forEach(out::addInternal);
+                    // ── Step 2: rebuild the per-player reveal map ───────────
+                    // HashSet copy: the codec returns lists, we want O(1)
+                    // membership lookups in isRevealed/reveal.
                     for (RevealEntry e : s.revealedEntries()) {
                         out.revealed.put(e.player(), new HashSet<>(e.deposits()));
                     }
+                    // ── Step 3: restore the optional deposit-seed override ──
                     out.depositSeed = s.depositSeed();
                 });
         return out;
@@ -105,13 +116,25 @@ public class DepositSavedData extends SavedData {
     /** Codec-based serialization to NBT — called by NeoForge during world save. */
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider lookup) {
+        // ── Phase 1: flatten the per-player reveal map into a list ──────────
+        // Storage codec wants a list of records, not a map of UUID→Set. Skip
+        // empty entries — a player who hasn't revealed anything (or had their
+        // reveals wiped) shouldn't take up bytes on disk.
         List<RevealEntry> revealedFlat = new ArrayList<>(revealed.size());
         for (var e : revealed.entrySet()) {
             if (e.getValue().isEmpty()) continue;
             revealedFlat.add(new RevealEntry(e.getKey(), new ArrayList<>(e.getValue())));
         }
+
+        // ── Phase 2: assemble + encode the wire payload ─────────────────────
+        // Defensive copy of deposits.values() — Codec.list iterates it, and
+        // the picker might be mutating concurrently in pathological races
+        // (chunk-load on another thread under c2me). Cheap enough to not bother
+        // with a read lock.
         Storage payload = new Storage(new ArrayList<>(deposits.values()), revealedFlat, depositSeed);
         Tag encoded = Storage.CODEC.encodeStart(NbtOps.INSTANCE, payload).getOrThrow();
+        // tag.merge so NeoForge's outer wrapper fields (typically nothing for
+        // SavedData but defensive against future framework additions) survive.
         if (encoded instanceof CompoundTag c) {
             tag.merge(c);
         }
@@ -151,12 +174,20 @@ public class DepositSavedData extends SavedData {
      * the id was unknown.
      */
     public Deposit remove(UUID depositId) {
+        // ── Step 1: remove from the primary store ───────────────────────────
+        // Bail with null if the id was already gone — defensive against
+        // callers that don't pre-check. Most callsites (cmdDeleteHere, etc.)
+        // already looked up via id, so this rarely triggers.
         Deposit removed = deposits.remove(depositId);
         if (removed == null) return null;
+
+        // ── Step 2: clear matching chunkIndex entries ───────────────────────
+        // computeIfPresent + owner-equality is a defensive pattern: if another
+        // deposit somehow grabbed one of our chunks between our store.put and
+        // our store.remove (only possible via a hand-crafted replace race),
+        // we leave that other deposit's index untouched rather than orphaning
+        // its chunks.
         for (ChunkPos cp : removed.chunks()) {
-            // Only clear the index entry if it still points to *this* deposit
-            // — defends against an unlikely race where another deposit picked
-            // up the same chunk via a hand-crafted replace.
             chunkIndex.computeIfPresent(cp.toLong(),
                     (k, owner) -> owner.equals(depositId) ? null : owner);
         }
@@ -170,13 +201,25 @@ public class DepositSavedData extends SavedData {
      * chunk set. Used by per-chunk deletion which shrinks {@code chunks}.
      */
     public void replace(Deposit replacement) {
+        // ── Step 1: swap the primary record ─────────────────────────────────
+        // Map.put returns the previous value or null. We need the previous
+        // chunk set to clean stale index entries.
         Deposit prev = deposits.put(replacement.id(), replacement);
+
+        // ── Step 2: clean stale chunkIndex entries from the old chunk set ──
+        // Only entries whose owner is THIS deposit get cleared — protects
+        // against the same race as remove(). If `prev` is null this is a
+        // fresh insert and there's nothing to clean.
         if (prev != null) {
             for (ChunkPos cp : prev.chunks()) {
                 chunkIndex.computeIfPresent(cp.toLong(),
                         (k, owner) -> owner.equals(replacement.id()) ? null : owner);
             }
         }
+
+        // ── Step 3: re-index the new chunk set ──────────────────────────────
+        // Plain put is fine here — overwrites whatever was at this chunk,
+        // which is the intended semantic for "this deposit now owns this chunk".
         for (ChunkPos cp : replacement.chunks()) {
             chunkIndex.put(cp.toLong(), replacement.id());
         }
@@ -188,7 +231,12 @@ public class DepositSavedData extends SavedData {
      * can broadcast a removal packet + clear OreData.
      */
     public java.util.List<UUID> removeAll() {
+        // Empty short-circuit — avoid the dirty-marking work entirely when
+        // there's nothing to wipe. Lets callers fire this unconditionally
+        // (e.g. /coedeposits regenerate at the very start of the world).
         if (deposits.isEmpty()) return java.util.List.of();
+        // Snapshot ids BEFORE clearing so the caller can broadcast a removal
+        // packet for these uuids (clients drop them from their cache).
         java.util.List<UUID> ids = new ArrayList<>(deposits.keySet());
         deposits.clear();
         chunkIndex.clear();

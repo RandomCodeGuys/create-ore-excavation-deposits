@@ -1,7 +1,13 @@
 {
   "type": "createoreexcavation:drilling",
   "drill": {"tag": "createoreexcavation:drills"},
-  "output": [{"id": "create:raw_zinc"}],
+  "output": [
+    {"id": "create:raw_zinc"},
+    {"id": "minecraft:raw_iron",    "chance": 0.06},
+    {"id": "minecraft:raw_copper",  "chance": 0.05},
+    {"id": "minecraft:cobblestone", "chance": 0.4},
+    {"id": "minecraft:gravel",      "chance": 0.18}
+  ],
   "priority": 0,
   "stress": 256,
   "ticks": 100,

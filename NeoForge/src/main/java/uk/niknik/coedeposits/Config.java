@@ -58,6 +58,11 @@ public class Config {
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Distance gradient — drives how tier scales with distance from spawn.
+    // Tier in turn drives deposit size, per-chunk units, and type eligibility.
+    // ═══════════════════════════════════════════════════════════════════════
+
     /** Distance gradient base — at d=base, tier is roughly 0.5 of the way to max. */
     public static final ModConfigSpec.DoubleValue BASE_RADIUS = BUILDER
             .comment("Base radius (blocks) for the distance-gradient log curve.")
@@ -88,6 +93,10 @@ public class Config {
                     "Bump up to 0.005-0.05 for denser maps; drop to 0.0001 for true-rarity worlds.")
             .defineInRange("core_spawn_probability", 0.0005, 0.0, 1.0);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Per-deposit shape — how rich the core is vs the edges of a blob.
+    // ═══════════════════════════════════════════════════════════════════════
+
     /**
      * Per-deposit gradient floor. Core chunk gets 100% of its rolled amountMul,
      * the most-distant chunk in the deposit gets {@code edge_amount_mul × core}.
@@ -98,6 +107,11 @@ public class Config {
                     "outer chunks lerp down to (amountMul × edge_amount_mul). Default 0.3 ",
                     "means edges have 30% of the core's richness.")
             .defineInRange("edge_amount_mul", 0.3, 0.0, 1.0);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Prospect scan — pre-discovers deposits so the world map fills in
+    // ahead of player exploration. Async since 0.1.2 (ProspectScanQueue).
+    // ═══════════════════════════════════════════════════════════════════════
 
     /**
      * On {@code ServerStartedEvent} {@link uk.niknik.coedeposits.gen.ProspectScanner}
@@ -116,6 +130,29 @@ public class Config {
             .defineInRange("prospect_radius", 2000, 0, 16000);
 
     /**
+     * How many pending deposit placements the {@link uk.niknik.coedeposits.gen.ProspectScanQueue}
+     * may materialize on the server thread per tick. Materialization is the
+     * SavedData write + per-chunk OreData apply for chunks currently loaded —
+     * cheap per item but accumulates with large blob counts. Bigger budget
+     * drains queues faster (more deposits visible on the map sooner) at the
+     * cost of slightly longer per-tick spikes when the queue is hot.
+     *
+     * <p>Dry-run picking itself runs on a dedicated worker thread and is
+     * unaffected by this budget — it only throttles the main-thread hand-off
+     * step. With the default 256 a fully-fresh 2000-block scan (~63k chunks
+     * → typically &lt;100 placements) materializes in well under a second of
+     * wall-clock once the worker finishes, never blocking the tick more than
+     * ~3ms in practice.
+     */
+    public static final ModConfigSpec.IntValue PROSPECT_CHUNKS_PER_TICK = BUILDER
+            .comment("Maximum number of pending deposit placements materialized on the server ",
+                    "thread per tick. The dry-run pick runs off-thread; this only throttles the ",
+                    "hand-off (SavedData.add + OreData apply on loaded blob chunks). Raise to drain ",
+                    "the queue faster after a large /coedeposits regenerate or fresh-world prospect; ",
+                    "lower if you see tick spikes on weak CPUs. Default 256 ≈ ~3ms/tick worst case.")
+            .defineInRange("prospect_chunks_per_tick", 256, 16, 4096);
+
+    /**
      * Growth coefficient used by {@link uk.niknik.coedeposits.deposit.DepositType.PerChunkUnits#computeTarget}
      * when a deposit_type's {@code per_chunk_units.max} is absent — yields
      * {@code min × (1 + tier × unbounded_growth)} so far-away deposits scale
@@ -127,6 +164,12 @@ public class Config {
                     "yields (1 + unbounded_growth) × min. Default 50 means tier=1 deposits ",
                     "have 51× the min units of tier=0. Crank up for richer far-away veins.")
             .defineInRange("unbounded_growth", 50.0, 0.0, 100000.0);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Reveal modes — visibility policy per deposit type. Determines whether
+    // a freshly-placed deposit appears on every player's map immediately
+    // or has to be earned via discovery / vein-finder use.
+    // ═══════════════════════════════════════════════════════════════════════
 
     /**
      * Global default reveal mode applied when a deposit_type doesn't set
@@ -163,6 +206,11 @@ public class Config {
                     "Has no effect on other reveal modes.")
             .defineInRange("discovery_radius_blocks", 24, 8, 1024);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Dimensions — which worlds run the picker. Unlisted dims fall through
+    // to pure vanilla COE behaviour (no managed blobs, no map tracking).
+    // ═══════════════════════════════════════════════════════════════════════
+
     /**
      * Dimensions in which the mod is active. In every listed dimension the
      * picker runs managed/COE placement, {@link uk.niknik.coedeposits.gen.ProspectScanner}
@@ -184,6 +232,61 @@ public class Config {
                     List.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"),
                     () -> "minecraft:overworld",
                     o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Logging toggles — granular on/off for each log category. Bypasses
+    // log4j2 level filtering for our package, so admins can enable specific
+    // event types without flipping the whole logger to DEBUG. Defaults split
+    // the categories into "useful signal" (on) vs "noisy debug" (off).
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** Per-deposit placement events ("placed iron at chunk X,Y | ..." + COE-tracked). */
+    public static final ModConfigSpec.BooleanValue LOG_PLACEMENT = BUILDER
+            .comment("Log when a new deposit is placed (managed blob or COE-tracked single chunk).",
+                    "One line per placement. Useful for verifying density / type distribution.")
+            .define("log_placement", true);
+
+    /** Per-player discovery events (ON_DISCOVERY walk-into, ON_PROSPECT vein-finder). */
+    public static final ModConfigSpec.BooleanValue LOG_DISCOVERY = BUILDER
+            .comment("Log when a player triggers a reveal — ON_DISCOVERY walk-into or ON_PROSPECT",
+                    "vein finder use. One line per reveal. Off if you want chat-only feedback.")
+            .define("log_discovery", true);
+
+    /** Chunk depletion ("depleted chunk X,Y — cleared OreData"). */
+    public static final ModConfigSpec.BooleanValue LOG_DEPLETION = BUILDER
+            .comment("Log when a chunk's vein is fully extracted and its OreData is wiped.",
+                    "One line per chunk. Off can quiet very active server with many drills.")
+            .define("log_depletion", true);
+
+    /** Per-deposit replenish actions (verbose; default off). */
+    public static final ModConfigSpec.BooleanValue LOG_REPLENISH_ACTIONS = BUILDER
+            .comment("Log when the replenish sweep restores units on a chunk. One line per",
+                    "(deposit, chunk) where units actually changed each tick — VERY noisy on",
+                    "servers with many replenishing deposits. Default off; flip on briefly to",
+                    "confirm replenish is firing for a specific deposit.")
+            .define("log_replenish_actions", false);
+
+    /** Prospect-scan summary ("dry-run at (X,Z): scanned N, placed K in T ms"). */
+    public static final ModConfigSpec.BooleanValue LOG_SCAN_SUMMARY = BUILDER
+            .comment("Log a one-line summary at the end of each prospect scan job.",
+                    "Includes scan centre, radius, chunks scanned, placements queued, and elapsed",
+                    "time. Useful for performance tuning prospect_radius.")
+            .define("log_scan_summary", true);
+
+    /** Per-chunk scan rejection diagnostics (very verbose; default off). */
+    public static final ModConfigSpec.BooleanValue LOG_SCAN_REJECTIONS = BUILDER
+            .comment("Log per-chunk diagnostics when a chunk passed the spawn-probability roll",
+                    "but no eligible deposit type matched. Shows which filter (placement / dimension /",
+                    "distance / biome) rejected each type. Useful for debugging 'why aren't deposits",
+                    "spawning here?' but extremely noisy in normal play. Default off.")
+            .define("log_scan_rejections", false);
+
+    /** Mod lifecycle events (picker install, type registry loaded, shutdown drain, etc.). */
+    public static final ModConfigSpec.BooleanValue LOG_LIFECYCLE = BUILDER
+            .comment("Log mod lifecycle events: picker installed on COE, deposit types loaded,",
+                    "scan-queue shutdown drain on server stop, default deposits.json written on",
+                    "first run. Sparse — only a handful of lines per server cycle.")
+            .define("log_lifecycle", true);
 
     /** Built once at class-init, registered with the mod container at startup. */
     static final ModConfigSpec SPEC = BUILDER.build();

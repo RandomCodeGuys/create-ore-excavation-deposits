@@ -97,8 +97,10 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<Map<Resour
     protected void apply(Map<ResourceLocation, DepositType> parsed, ResourceManager mgr, ProfilerFiller profiler) {
         types = Map.copyOf(parsed);
         rebuildIndexes(parsed);
-        Coedeposits.LOGGER.info("[coedeposits] loaded {} deposit types from {}: {}",
-                types.size(), CONFIG_SUBDIR + "/" + CONFIG_FILE, types.keySet());
+        if (uk.niknik.coedeposits.Config.LOG_LIFECYCLE.get()) {
+            Coedeposits.LOGGER.info("[coedeposits] loaded {} deposit types from {}: {}",
+                    types.size(), CONFIG_SUBDIR + "/" + CONFIG_FILE, types.keySet());
+        }
     }
 
     /** Recompute managed/COE indexes from the live registry. Called from apply(). */
@@ -107,10 +109,21 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<Map<Resour
         Map<ResourceLocation, ResourceLocation> coe = new HashMap<>();
         for (var e : registry.entrySet()) {
             DepositType t = e.getValue();
+            // Multi-recipe-aware: each type contributes EVERY recipe in its
+            // weighted pool to the indexes. The picker's COE-suppression
+            // (Phase 3 in CoedepositsPicker) needs to know about all recipes a
+            // managed type might assign so COE can't natural-place any of them.
             if (t.placement() == DepositType.Placement.MANAGED) {
-                managed.add(t.veinRecipe());
+                for (DepositType.WeightedRecipe wr : t.veinRecipes()) {
+                    managed.add(wr.recipe());
+                }
             } else if (t.placement() == DepositType.Placement.COE) {
-                coe.put(t.veinRecipe(), e.getKey());
+                // COE-mode types map every recipe back to the type id — when
+                // COE later spawns one of those recipes naturally, the picker
+                // looks up which tracked type owns it.
+                for (DepositType.WeightedRecipe wr : t.veinRecipes()) {
+                    coe.put(wr.recipe(), e.getKey());
+                }
             }
         }
         managedVeinRecipes = Set.copyOf(managed);
@@ -140,7 +153,9 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<Map<Resour
                     return;
                 }
                 Files.copy(is, file);
-                Coedeposits.LOGGER.info("[coedeposits] wrote default deposit config to {}", file);
+                if (uk.niknik.coedeposits.Config.LOG_LIFECYCLE.get()) {
+                    Coedeposits.LOGGER.info("[coedeposits] wrote default deposit config to {}", file);
+                }
             }
         } catch (IOException e) {
             Coedeposits.LOGGER.error("[coedeposits] failed to create default {} at {}: {}",
@@ -156,10 +171,20 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<Map<Resour
      */
     private static Map<ResourceLocation, DepositType> parse(Path file) {
         Map<ResourceLocation, DepositType> out = new HashMap<>();
+
+        // ── Phase 1: existence check ────────────────────────────────────────
+        // Caller (prepare) already calls ensureExists before this, so missing
+        // here means ensureExists itself failed. Treat as empty registry —
+        // mod still loads but no deposits will spawn.
         if (!Files.exists(file)) {
             Coedeposits.LOGGER.warn("[coedeposits] {} not found — no deposit types loaded", file);
             return out;
         }
+
+        // ── Phase 2: read + JSON-parse the file ─────────────────────────────
+        // IOException → file got removed between exists() and read; Exception →
+        // syntactically invalid JSON (admin saved a malformed file). Both
+        // produce an empty map so the previous registry remains intact.
         JsonElement root;
         try (Reader r = Files.newBufferedReader(file, StandardCharsets.UTF_8)) {
             root = JsonParser.parseReader(r);
@@ -174,6 +199,11 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<Map<Resour
             Coedeposits.LOGGER.error("[coedeposits] {} top-level must be a JSON object", file);
             return out;
         }
+
+        // ── Phase 3: decode each entry via the DepositType codec ────────────
+        // Per-entry try-or-skip: one bad entry doesn't kill the whole file.
+        // Keys starting with `_` are reserved for inline JSON comments (since
+        // standard JSON doesn't allow comments) — e.g. "_comment": "...".
         JsonObject obj = root.getAsJsonObject();
         for (Map.Entry<String, JsonElement> e : obj.entrySet()) {
             String key = e.getKey();
@@ -183,6 +213,9 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<Map<Resour
                 Coedeposits.LOGGER.error("[coedeposits] {}: invalid deposit id '{}'", file, key);
                 continue;
             }
+            // resultOrPartial logs the per-field DataResult error; ifPresent
+            // skips broken entries so a typo in one ore doesn't prevent the
+            // rest from loading.
             DepositType.CODEC.parse(JsonOps.INSTANCE, e.getValue())
                     .resultOrPartial(err -> Coedeposits.LOGGER.error(
                             "[coedeposits] {}: failed to parse '{}': {}", file, key, err))

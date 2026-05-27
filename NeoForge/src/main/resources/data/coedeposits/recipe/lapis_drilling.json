@@ -1,7 +1,13 @@
 {
   "type": "createoreexcavation:drilling",
   "drill": {"tag": "createoreexcavation:drills"},
-  "output": [{"id": "minecraft:lapis_lazuli"}],
+  "output": [
+    {"id": "minecraft:lapis_lazuli"},
+    {"id": "minecraft:redstone",       "chance": 0.06},
+    {"id": "minecraft:amethyst_shard", "chance": 0.04},
+    {"id": "minecraft:cobblestone",    "chance": 0.25},
+    {"id": "minecraft:diorite",        "chance": 0.12}
+  ],
   "priority": 0,
   "stress": 256,
   "ticks": 100,

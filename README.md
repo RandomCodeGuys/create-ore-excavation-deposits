@@ -26,6 +26,111 @@ Vanilla COE assigns vein recipes to random chunks independently — ore types an
 
 Plus auto-clearing of depleted chunks (no Vein Finder false positives), prospect pre-scan around spawn on server start, and incremental roving scans as players explore.
 
+## Adding custom ores — one file, no datapack required (0.1.2+)
+
+Since 0.1.2 a deposit type can describe its **vein placement** and **drilling output** inline in `config/coedeposits/deposits.json`. The mod's `BundledRecipePack` virtual datapack auto-generates the COE recipes from the inline spec at server start and on every `/reload` — admins no longer need to author a separate datapack with `data/<ns>/recipe/*.json` files for new ores.
+
+Minimal example: add a new platinum ore that drops alongside cobblestone slag.
+
+```json
+"mymod:platinum": {
+  "vein": {
+    "display_name": "Platinum Vein",
+    "amount_multiplier_min": 2.0,
+    "amount_multiplier_max": 25.0,
+    "icon": "mymod:raw_platinum"
+  },
+  "drilling": {
+    "outputs": [
+      {"item": "mymod:raw_platinum"},
+      {"item": "minecraft:cobblestone", "chance": 0.25}
+    ],
+    "ticks": 120,
+    "stress": 320
+  },
+  "dimensions": "minecraft:overworld",
+  "distance": {"min": 5000, "max": 2147483647},
+  "size_chunks": {"min": 2, "max": 8},
+  "per_chunk_units": {"min": 3000, "max": 25000},
+  "weight": 12,
+  "map_color": 14803425,
+  "biome_filter": ["c:is_mountain"]
+}
+```
+
+Save, run `/reload` — the new ore spawns with a synthetic `mymod:platinum_vein` + `mymod:platinum_drilling` recipe pair. **No datapack file needed**, no `pack.mcmeta`, no `data/` directory.
+
+### How it works
+
+1. `BundledRecipePackProvider` registers a virtual server-data pack named `coedeposits-config` via NeoForge's `AddPackFindersEvent`.
+2. On every recipe-manager reload (server start, `/reload`), the pack reads `deposits.json` and emits in-memory JSON for each entry that has an inline `vein:` and/or `drilling:` block.
+3. COE's drilling machine and our picker see these synthesised recipes exactly like bundled or datapack ones — they're indistinguishable at runtime.
+4. The virtual pack loads at the TOP position, so any conflicting recipe id in a user datapack or bundled mod jar **wins** over our synthesis.
+
+### Inline `vein` schema
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `display_name` | string | `"Deposit"` | Vein-finder + JEI label |
+| `amount_multiplier_min` | float | `2.0` | COE per-chunk randomMul lower bound |
+| `amount_multiplier_max` | float | `25.0` | COE per-chunk randomMul upper bound |
+| `icon` | item id | first `drilling.outputs[0].item` | Vein-finder hover icon |
+| `icon_count` | int | `1` | Icon stack size |
+| `placement` | `{salt, separation, spacing}` | derived from entry hash | COE spread placement (ignored by MANAGED types) |
+| `finite` | `"always"` / `"never"` | `"always"` | Vein depletes after `per_chunk_units` are drilled |
+
+### Inline `drilling` schema
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `outputs` | list of `{item, count?, chance?}` | required | Items the drill can yield per cycle |
+| `outputs[].item` | item id | required | Item id |
+| `outputs[].count` | int | `1` | Stack size per drop |
+| `outputs[].chance` | float | `1.0` | Independent per-cycle drop probability |
+| `ticks` | int | `100` | Drill cycle duration |
+| `stress` | int | `256` | Create stress units required |
+| `drill_tag` | item-tag id | `createoreexcavation:drills` | Drill ingredient |
+
+### Recipe id derivation
+
+- **Vein recipe id**: from `vein_recipe` (legacy) or first entry of `vein_recipes`, or auto-derived as `<typeNs>:<typePath>_vein`.
+- **Drilling recipe id**: vein id with trailing `_vein` swapped for `_drilling`, or `_drilling` appended when no `_vein` suffix.
+
+Admins who prefer to author recipes externally (e.g. via KubeJS, a hand-crafted datapack, or another mod's bundled recipes) can still use `vein_recipe: "ns:my_external_vein"` and omit the inline blocks. The mod doesn't care which source provided the recipe.
+
+## Multi-ore deposits, fillers, and self-replenishment (0.1.2+)
+
+A single deposit type can now contain multiple ore recipes and "tailings" chunks, and can optionally regenerate its drained units over time. All three features are opt-in — bundled defaults still use the simple single-recipe schema and don't regenerate.
+
+**Multi-ore (`vein_recipes`)**: each chunk of a placed deposit blob deterministically rolls one of the type's weighted recipes (or a filler — see below). The roll is seeded on `(depositSeed, chunkX, chunkZ)` so the same chunk always picks the same recipe across restarts. Backward-compatible: the legacy singular `vein_recipe: "X"` field still parses and is folded into a single-entry list with weight 1.
+
+**Fillers (`fillers`)**: filler entries occupy slices of the same weighted pool as recipes. Chunks that roll a filler get no OreData — drills find nothing, but the chunk is still tracked in `DepositSavedData` and rendered on the world map as warm-grey "tailings" so the deposit footprint looks patchy and realistic rather than uniformly rich.
+
+**Self-replenishment (`replenish_rate_per_hour`)**: positive values turn on a per-tick refill that subtracts from each loaded ore chunk's `extractedAmount` at the configured rate, distributed evenly across the deposit's loaded ore chunks. Capped at the chunk's initial yield — a deposit can recover from drilling, but never grow beyond what it originally held. Sub-unit-per-tick rates are accumulated via a per-deposit fractional debt map so even very slow rates (e.g. 100 units/hour over 30 chunks ≈ 0.001 units/sec per chunk) eventually move the needle.
+
+Example schema:
+
+```json
+"coedeposits:rich_complex": {
+  "vein_recipes": [
+    {"recipe": "coedeposits:iron_vein",   "weight": 50},
+    {"recipe": "coedeposits:copper_vein", "weight": 30},
+    {"recipe": "coedeposits:gold_vein",   "weight": 20}
+  ],
+  "fillers": [
+    {"weight": 40}
+  ],
+  "replenish_rate_per_hour": 1000,
+  "per_chunk_units": {"min": 20000, "max": 200000},
+  "size_chunks": {"min": 4, "max": 20},
+  "weight": 30,
+  "distance": {"min": 2000, "max": 99999},
+  "biome_filter": ["c:is_mountain"]
+}
+```
+
+Per-deposit replenish overrides via `/coedeposits replenish <rate>` (or `replenish all <rate>` for the whole dimension) — `rate=0` clears the override and reverts to the type default.
+
 ## Compatibility
 
 | Mod | Status | Notes |
@@ -51,6 +156,8 @@ All `/coedeposits` subcommands require permission level 2 (standard OP — grant
 | `/coedeposits delete here` | Remove the entire deposit owning the current chunk. |
 | `/coedeposits delete chunk` | Remove just the current chunk from its deposit (shrinks the blob; if it was the last chunk the deposit is removed). |
 | `/coedeposits place [<type> [<pos> [<amount> [<chunks>]]]]` | Admin-place a deposit. `amount<0` → infinite vein (requires `vein_recipe_infinite`); `amount>0` → exact unit budget; `chunks` overrides natural blob size (default 5). |
+| `/coedeposits replenish <rate>` | Set per-deposit replenishment override on the deposit at the player's chunk. `rate` is units/hour; `0` clears the override (deposit reverts to its type's default). |
+| `/coedeposits replenish all <rate>` | Same but applied to every deposit in the current dimension. |
 
 ## Settings — `config/coedeposits/deposits.json`
 
@@ -83,7 +190,10 @@ After editing, run `/reload` on the server — `DepositTypeLoader` re-reads the 
 
 | Field | Type | Purpose |
 |---|---|---|
-| `vein_recipe` | ResourceLocation | id of the COE VeinRecipe applied via `OreData.setRecipe`. |
+| `vein_recipe` | ResourceLocation | **Legacy** — single COE VeinRecipe id. Auto-converted to a one-entry `vein_recipes` list with weight 1. Still accepted for back-compat. |
+| `vein_recipes` | `[{recipe, weight}]` or single object | **0.1.2+** — weighted pool of recipes. Each chunk of a deposit blob rolls one entry deterministically. Use this instead of `vein_recipe` for multi-ore deposits. |
+| `fillers` | `[{weight}]` | **0.1.2+** — weighted "tailings" entries in the same pool. Chunks that roll a filler get no OreData (drill yields nothing) and render as warm-grey on the map. Default: empty list (no fillers). |
+| `replenish_rate_per_hour` | optional double | **0.1.2+** — per-deposit ore restoration rate in units/hour. Default 0 (disabled). Distributed evenly across the deposit's loaded ore chunks; capped at each chunk's initial yield. |
 | `vein_recipe_infinite` | optional RL | Alternate recipe with `finite=never` (used by `/place ... -1`). |
 | `items` | List<ItemEntry> | Reserved for future drilling-output synthesis. Currently unused at runtime. |
 | `placement` | optional enum | `managed` (default) — our blob generator places this. `coe` — vanilla COE's `RandomSpreadGenerator` places it; we observe and persist for the map only. |

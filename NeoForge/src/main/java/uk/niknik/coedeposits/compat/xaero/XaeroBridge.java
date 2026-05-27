@@ -61,7 +61,11 @@ public final class XaeroBridge {
         // known internal API paths via reflection. If any signature changes
         // upstream the catch logs once and we fall back to the chat-suggest path.
         try {
+            // ── Step 1: locate the active MinimapSession ────────────────────
             // Newer Xaero (1.21+): xaero.hud.minimap.module.MinimapSession.getCurrentSession()
+            // returns the per-world session, or null when no world is loaded
+            // (e.g. user is on the title screen — shouldn't happen in our
+            // discovery flow but defensive null-check kept anyway).
             Class<?> sessionCls = Class.forName("xaero.hud.minimap.module.MinimapSession");
             Object session = sessionCls.getMethod("getCurrentSession").invoke(null);
             if (session == null) {
@@ -69,15 +73,25 @@ public final class XaeroBridge {
                 return;
             }
 
-            // session.getWaypointsManager().getCurrentWorld().getCurrentSet().add(waypoint)
+            // ── Step 2: walk session → waypointsManager → world → set ───────
+            // Each layer is reflectively resolved; null at any step means the
+            // current dimension has no waypoint storage configured yet (Xaero
+            // creates per-dim sets lazily). Bail silently — chat fallback is
+            // enough.
             Object wpMgr = session.getClass().getMethod("getWaypointsManager").invoke(session);
             Object curWorld = wpMgr.getClass().getMethod("getCurrentWorld").invoke(wpMgr);
             if (curWorld == null) return;
             Object curSet = curWorld.getClass().getMethod("getCurrentSet").invoke(curWorld);
             if (curSet == null) return;
 
-            // Construct Waypoint(x, y, z, name, symbol, color, type, disabled, rotation)
-            // Older constructor varies — try (int,int,int,String,String,int).
+            // ── Step 3: construct a Waypoint instance ───────────────────────
+            // Xaero's Waypoint constructor signature has shifted across MC
+            // versions; the (int,int,int,String,String,int) form covers 1.20+.
+            // y is clamped at 0 in case the discovery packet came from a
+            // chunk where the spawn-Y reference was negative (custom dims).
+            // The single-character "symbol" defaults to the first letter of
+            // the deposit type path so different ores get visually distinct
+            // markers without us needing a real icon asset.
             Class<?> wpCls = Class.forName("xaero.hud.minimap.waypoint.Waypoint");
             Object wp = wpCls.getConstructor(int.class, int.class, int.class,
                     String.class, String.class, int.class)
@@ -89,11 +103,16 @@ public final class XaeroBridge {
                             p.typeId().getPath().substring(0, 1).toUpperCase(),
                             6 /* gold-ish color */);
 
+            // ── Step 4: append to the active set ────────────────────────────
             curSet.getClass().getMethod("add", wpCls).invoke(curSet, wp);
-            Coedeposits.LOGGER.info("[xaero] added waypoint for {}", p.name());
+            if (uk.niknik.coedeposits.ClientConfig.LOG_CLIENT_SYNC.get()) {
+                Coedeposits.LOGGER.info("[xaero] added waypoint for {}", p.name());
+            }
         } catch (Throwable t) {
-            // Reflection target shifted — silent failure is fine, chat message above already
-            // gave the player coordinates. Logged at debug to avoid noise.
+            // Reflection target shifted (Xaero API drift) — silent failure is
+            // fine, the chat message above already gave the player coordinates.
+            // Debug log so it's discoverable when debugging but doesn't noise
+            // the normal info log.
             Coedeposits.LOGGER.debug("[xaero] waypoint add via reflection failed: {}", t.toString());
         }
     }

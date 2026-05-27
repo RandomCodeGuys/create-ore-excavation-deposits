@@ -1,7 +1,13 @@
 {
   "type": "createoreexcavation:drilling",
   "drill": {"tag": "createoreexcavation:drills"},
-  "output": [{"id": "minecraft:quartz"}],
+  "output": [
+    {"id": "minecraft:quartz"},
+    {"id": "minecraft:amethyst_shard","chance": 0.04},
+    {"id": "minecraft:sand",          "chance": 0.3},
+    {"id": "minecraft:cobblestone",   "chance": 0.15},
+    {"id": "minecraft:sandstone",     "chance": 0.1}
+  ],
   "priority": 0,
   "stress": 256,
   "ticks": 100,

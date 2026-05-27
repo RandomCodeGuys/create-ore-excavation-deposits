@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+import uk.niknik.coedeposits.ClientConfig;
 import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.network.DepositSnapshot;
 
@@ -38,8 +39,10 @@ public final class DepositClientCache {
         for (DepositSnapshot s : incoming) {
             DEPOSITS.put(s.id(), s);
         }
-        Coedeposits.LOGGER.debug("[coedeposits] cache: +{} → total {}",
-                incoming.size(), DEPOSITS.size());
+        if (ClientConfig.LOG_CLIENT_SYNC.get()) {
+            Coedeposits.LOGGER.info("[coedeposits] cache: +{} → total {}",
+                    incoming.size(), DEPOSITS.size());
+        }
     }
 
     /**
@@ -51,8 +54,10 @@ public final class DepositClientCache {
         for (java.util.UUID id : ids) {
             DEPOSITS.remove(id);
         }
-        Coedeposits.LOGGER.debug("[coedeposits] cache: -{} → total {}",
-                ids.size(), DEPOSITS.size());
+        if (ClientConfig.LOG_CLIENT_SYNC.get()) {
+            Coedeposits.LOGGER.info("[coedeposits] cache: -{} → total {}",
+                    ids.size(), DEPOSITS.size());
+        }
     }
 
     /** Drops every cached snapshot — call on world unload to free memory. */

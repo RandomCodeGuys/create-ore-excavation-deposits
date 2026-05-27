@@ -42,6 +42,11 @@ public final class ClientConfig {
 
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // Map button — placement and visibility of the in-Xaero toggle widget.
+    // Always paired with the keybind as a fallback (Options → Controls).
+    // ═══════════════════════════════════════════════════════════════════════
+
     /**
      * Whether to draw the {@code Deposits: ON/OFF} button on Xaero's world
      * map. Disable when it conflicts with another mod's button — the
@@ -88,6 +93,20 @@ public final class ClientConfig {
                     "mid-edge area is the only reliably-clear strip. Bump higher to slide",
                     "down further; set 5 to put it in the corner if you don't care about overlap.")
             .defineInRange("map_button_y_offset", 50, 0, 2000);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Logging toggles — client-side counterpart to the LOG_* settings in
+    // Config.java. Server-side toggles live there (COMMON); client-only ones
+    // (e.g. cache update lines printed on the render thread) live here.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /** Client-cache update events ("cache: +N → total M"). */
+    public static final ModConfigSpec.BooleanValue LOG_CLIENT_SYNC = BUILDER
+            .comment("Log when the client cache receives a deposit sync packet from the server.",
+                    "Format: 'cache: +N → total M'. Fires every 5 seconds for re-syncs of unchanged",
+                    "deposits, so leaving this on means a steady debug stream. Default off; turn on",
+                    "briefly when debugging packet flow.")
+            .define("log_client_sync", false);
 
     /** Built once at class-init, registered by {@link CoedepositsClient}. */
     public static final ModConfigSpec SPEC = BUILDER.build();

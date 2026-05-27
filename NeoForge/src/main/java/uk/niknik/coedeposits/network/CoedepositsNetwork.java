@@ -94,11 +94,16 @@ public final class CoedepositsNetwork {
      * stops drawing them without waiting for the next periodic re-sync.
      */
     public static void broadcastRemoval(net.minecraft.server.level.ServerLevel lvl, java.util.List<java.util.UUID> ids) {
+        // Empty-id short-circuit — `/coedeposits regenerate` calls this with
+        // the result of removeAll(), which returns an empty list when there
+        // was nothing to wipe. Skip the per-player loop in that case.
         if (ids.isEmpty()) return;
         DepositRemovePayload payload = new DepositRemovePayload(ids);
         for (ServerPlayer p : lvl.getServer().getPlayerList().getPlayers()) {
-            // Removal is dimension-scoped — only players in the deposit's
-            // dimension are tracking these uuids in their cache.
+            // Removal is dimension-scoped — only players currently IN the
+            // deposit's dimension hold these uuids in their cache. A player
+            // in the nether doesn't need to hear about overworld deletes
+            // (they get a fresh sync when they portal back).
             if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
             PacketDistributor.sendToPlayer(p, payload);
         }
@@ -123,7 +128,16 @@ public final class CoedepositsNetwork {
      * {@link DepositSyncPayload}. Skips players whose visible list is empty.
      */
     public static void broadcastSyncFiltered(MinecraftServer server, ServerLevel lvl, Collection<Deposit> deposits) {
+        // ── Step 1: snapshot the SavedData for visibility lookups ───────────
+        // buildVisible needs it to check per-player reveal records. Pulled
+        // once outside the player loop to avoid repeated DataStorage lookups.
         DepositSavedData store = DepositSavedData.get(lvl);
+
+        // ── Step 2: per-player tailored sync ────────────────────────────────
+        // Each player gets a different snapshot list because reveal state is
+        // per-player. We skip:
+        //   - players in other dimensions (their cache holds other dims' data)
+        //   - players whose visible list is empty (no point sending an empty packet)
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
             var visible = buildVisible(lvl, store, p, deposits);
@@ -141,11 +155,23 @@ public final class CoedepositsNetwork {
      * @return  true when a fresh reveal happened (caller may want to log)
      */
     public static boolean revealAndNotify(ServerLevel lvl, ServerPlayer player, Deposit dep) {
+        // ── Step 1: claim the reveal (idempotent) ───────────────────────────
+        // store.reveal returns false when the player already had this deposit
+        // marked revealed — we bail without sending duplicate packets, so the
+        // ON_DISCOVERY / ON_PROSPECT listeners can call this every tick
+        // without spamming the client.
         DepositSavedData store = DepositSavedData.get(lvl);
         if (!store.reveal(player.getUUID(), dep.id())) return false;
 
+        // ── Step 2: push the deposit snapshot to the player's cache ─────────
+        // Without this the marker wouldn't appear on the map until the next
+        // 5-second re-sync from DepositDepletionListener — too laggy for a
+        // "just discovered it!" UX moment.
         sendSync(player, new DepositSyncPayload(List.of(DepositSnapshot.fromDeposit(lvl, dep))));
 
+        // ── Step 3: chat-style discovery packet (gold message + waypoint) ──
+        // Coord Y uses spawn Y so the resulting `/tp` suggestion is at a
+        // sensible elevation rather than the chunk-core's possibly-weird Y.
         BlockPos pos = new BlockPos(
                 dep.core().getMiddleBlockX(),
                 lvl.getSharedSpawnPos().getY(),
@@ -168,11 +194,22 @@ public final class CoedepositsNetwork {
      */
     public static List<DepositSnapshot> buildVisible(
             ServerLevel lvl, DepositSavedData store, ServerPlayer player, Collection<Deposit> deposits) {
+        // Pre-sized so the loop doesn't reallocate. Worst case all deposits
+        // pass the filter — under-sizing then growing would cost more than
+        // a slightly oversized backing array.
         List<DepositSnapshot> out = new ArrayList<>(deposits.size());
         var pid = player.getUUID();
         for (Deposit d : deposits) {
+            // Look up the type's effective reveal mode. type may be null for
+            // legacy SavedData entries whose typeId no longer exists in the
+            // registry — fall back to the global default to keep them visible
+            // rather than silently hiding them forever.
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(d.typeId());
             Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
+            // Only the per-player modes (ON_DISCOVERY / ON_PROSPECT) gate
+            // visibility on the reveal record. ALWAYS and ON_PROXIMITY always
+            // include the snapshot — proximity filtering happens client-side
+            // at render time, not in this server-side filter.
             if (mode.isPerPlayer() && !store.isRevealed(pid, d.id())) continue;
             out.add(DepositSnapshot.fromDeposit(lvl, d));
         }
