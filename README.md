@@ -5,7 +5,7 @@ A NeoForge add-on for **Create Ore Excavation** (COE) that replaces the flat one
 - **Minecraft**: 1.21.1
 - **NeoForge**: 21.1.230
 - **Required**: Create Ore Excavation
-- **Soft compat**: Xaero's World Map (overlay), Xaero's Minimap (waypoints)
+- **Soft compat**: Xaero's World Map (overlay), Xaero's Minimap (waypoints), YACL (config screen + in-game deposit editor)
 
 ---
 
@@ -24,7 +24,17 @@ Vanilla COE assigns vein recipes to random chunks independently — ore types an
 9. **Multi-dimension support** — `enabled_dimensions` config selects which dimensions the picker runs in; each dimension has its own SavedData and reproducible seed.
 10. **Reproducible patterns** — per-dimension `depositSeed` override lets you copy a deposit layout from one world to another (`/coedeposits seed` to read, `/coedeposits regenerate <seed>` to apply).
 
+11. **Overlap resolution** — when a new deposit's blob collides with existing ones, each contested chunk is resolved: same ore type merges into one deposit; different types split it to the rarer (lower-`weight`) ore, trimming the more common one.
+
 Plus auto-clearing of depleted chunks (no Vein Finder false positives), prospect pre-scan around spawn on server start, and incremental roving scans as players explore.
+
+## In-game config & editor (0.1.3+)
+
+No file editing needed for the common knobs or for authoring ores:
+
+- **Config screen** — Mods → Coedeposits → Config opens a structured screen over every `coedeposits-common.toml` / `coedeposits-client.toml` value. With **YACL** installed it uses a YACL screen; otherwise it cedes to an installed auto-screen mod (Configured/Catalogue) or falls back to NeoForge's native `ConfigurationScreen`. Fine-grained probabilities are edited as whole numbers (e.g. *Core spawn — per 100k chunks*, where 50 = 0.0005/chunk) so small values stay editable and save reliably.
+- **Deposit editor** (requires YACL) — a guided editor that writes `config/coedeposits/deposits.json` through structured controls (item pickers, sliders, dropdowns) for the vein / drilling / placement fields — no hand-editing JSON. Run `/reload` to apply.
+- **Config validation** — on load, `/reload`, and player join the mod checks every deposit type (empty recipe pool, missing or unresolvable vein recipe, no drilling recipe bound, degenerate budget, oversize blobs) and reports issues to the server log and to ops in chat, so silent misconfig surfaces instead of "nothing generates".
 
 ## Adding custom ores — one file, no datapack required (0.1.2+)
 
@@ -161,7 +171,7 @@ All `/coedeposits` subcommands require permission level 2 (standard OP — grant
 
 ## Deposit types — datapack + config overlay
 
-Deposit types load from two layers. **Datapack layer:** every `data/<ns>/coedeposits/deposit_type/<id>.json` in the active server-data packs — the mod ships the 14 standard ores in its own jar, and other datapacks / KubeJS / CraftTweaker can add new types or override the bundled ones by pack priority. **Config overlay (optional):** `config/coedeposits/deposits.json`, applied last so a hand-edit always wins over a datapack type of the same id. The file is no longer auto-created — a fresh install runs on the datapack defaults; copy the jar's `coedeposits-default-deposits.json` to that path for an editable starting point (it also carries the inline-recipe example entries).
+Deposit types load from two layers. **Datapack layer:** every `data/<ns>/deposit_type/<id>.json` in the active server-data packs (namespace-root folder, like vanilla `recipe/`) — the mod ships the 14 standard ores in its own jar, and other datapacks / KubeJS / CraftTweaker can add new types or override the bundled ones by pack priority. **Config overlay (optional):** `config/coedeposits/deposits.json`, applied last so a hand-edit always wins over a datapack type of the same id. The file is no longer auto-created — a fresh install runs on the datapack defaults; copy the jar's `coedeposits-default-deposits.json` to that path for an editable starting point (it also carries the inline-recipe example entries).
 
 > **Inline `vein:` / `drilling:` synthesis works only in the config overlay.** A datapack-supplied type must reference an existing recipe via `vein_recipe` / `vein_recipes`, because the on-the-fly recipe synthesiser (`BundledRecipePack`) reads the config file from disk and can't see other datapacks during a reload.
 

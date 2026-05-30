@@ -110,6 +110,27 @@ config="${mod_id}.mixins.json"
     ordering="NONE"
     side="CLIENT"
 
+# Xaero's World Map — OPTIONAL soft dep. Our mixin into xaero.map.gui.GuiMap
+# draws the deposit overlay + toggle widget; without Xaero, FML tolerates the
+# missing mixin target and the mod runs fine without the map UI. CLIENT-only;
+# AFTER so Xaero's class exists when our mixin is applied.
+[[dependencies.${mod_id}]]
+    modId="xaeroworldmap"
+    type="optional"
+    versionRange="[1.0,)"
+    ordering="AFTER"
+    side="CLIENT"
+
+# Xaero's Minimap — OPTIONAL soft dep. XaeroBridge adds a waypoint on deposit
+# discovery via best-effort reflection; absent Xaero (or on API drift) it
+# silently falls back to a click-to-/tp chat message. CLIENT-only.
+[[dependencies.${mod_id}]]
+    modId="xaerominimap"
+    type="optional"
+    versionRange="[1.0,)"
+    ordering="NONE"
+    side="CLIENT"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.
