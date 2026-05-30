@@ -148,6 +148,7 @@ Per-deposit replenish overrides via `/coedeposits replenish <rate>` (or `repleni
 | **Create Ore Excavation** (`createoreexcavation`) | **Required** | We subclass COE's `RandomSpreadGenerator` and swap the static `OreVeinGenerator.picker` via reflection (the field is opened by an AccessTransformer). |
 | **Xaero's World Map** (`xaeroworldmap`) | Soft | Mixin into `xaero.map.gui.GuiMap.render` (TAIL) draws the overlay + adds the toggle widget. Mixin is gated `client`-only via `coedeposits.mixins.json` so dedicated servers skip it. |
 | **Xaero's Minimap** (`xaerominimap`) | Soft | `XaeroBridge` does a best-effort reflective waypoint add on deposit discovery; if Xaero's API drifts it falls back silently to the click-to-suggest `/tp` chat message. |
+| **YACL** (`yet_another_config_lib_v3`) | Soft | When present, powers the config screen + in-game deposit editor; absent, the mod cedes to an auto-screen mod or NeoForge's native config screen. Client-only. |
 
 ## Commands
 
