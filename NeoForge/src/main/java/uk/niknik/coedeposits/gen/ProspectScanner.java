@@ -179,7 +179,7 @@ public final class ProspectScanner {
         float amountMul = DepositPlacer.amountMulForTarget(
                 targetUnits, vr.getMinAmount(), vr.getMaxAmount(), finiteBase);
 
-        Deposit dep = new Deposit(
+        Deposit candidate = new Deposit(
                 UUID.randomUUID(),
                 p.typeId(),
                 p.typeId().getPath() + "@" + (p.coreChunk().x * 16) + "," + (p.coreChunk().z * 16),
@@ -189,7 +189,13 @@ public final class ProspectScanner {
                 p.tierFraction(),
                 DepositType.Placement.MANAGED,
                 0.0);  // replenishRateOverride: defer to type's default
-        store.add(dep);
+        // Resolve overlaps with already-placed deposits: same-type blobs merge,
+        // different types yield each contested chunk to the rarer (lower weight).
+        DepositSavedData.OverlapResult res =
+                store.addResolvingOverlap(candidate, CoedepositsPicker::weightOf);
+        Deposit dep = res.placed();
+        if (dep == null) return false;  // every chunk lost to a rarer type
+        CoedepositsPicker.syncOverlap(lvl, store, res, candidate.id());
 
         // Materialize OreData on any of the blob's chunks that are currently
         // loaded. Per-chunk roll picks each chunk's recipe (or returns empty

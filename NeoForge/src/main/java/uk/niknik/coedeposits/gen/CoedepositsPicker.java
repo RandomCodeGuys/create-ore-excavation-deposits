@@ -169,8 +169,10 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             float amountMul = DepositPlacer.amountMulForTarget(
                     targetUnits, vr.getMinAmount(), vr.getMaxAmount(), base);
 
-            // Step 2c: persist the deposit to SavedData.
-            Deposit dep = new Deposit(
+            // Step 2c: persist, resolving overlaps with existing deposits —
+            // same-type blobs merge, different types yield to the rarer (lower
+            // weight) one per contested chunk.
+            Deposit candidate = new Deposit(
                     UUID.randomUUID(),
                     placed.typeId(),
                     nameFor(placed.typeId(), cp),
@@ -180,12 +182,16 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                     placed.tierFraction(),
                     DepositType.Placement.MANAGED,
                     0.0);  // replenishRateOverride: defer to type's default
-            store.add(dep);
+            DepositSavedData.OverlapResult res =
+                    store.addResolvingOverlap(candidate, CoedepositsPicker::weightOf);
+            Deposit dep = res.placed();
+            if (dep == null) return null;  // every chunk lost to a rarer type
 
             // Step 2d: roll + apply OreData for the CORE chunk (the only chunk
-            // we know is loaded right now — picker fires per chunk-load).
-            // Other blob chunks get rolled & applied via Phase 1 when they
-            // load. Filler core (rare but possible) → no OreData applied.
+            // we know is loaded right now). The core was unowned — Phase 1 caught
+            // owned chunks — so it's always part of the resulting deposit. Other
+            // blob chunks (and any trimmed-from-another-deposit chunks) get rolled
+            // & applied via Phase 1 when they load.
             java.util.Optional<ResourceLocation> coreRecipe =
                     DepositPlacer.rollChunkRecipe(type, store.effectiveSeed(lvl), cp);
             if (coreRecipe.isPresent()) {
@@ -194,17 +200,16 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                 applyToOreData(chunk, coreRecipe.get(), perChunkCore);
             }
 
-            // Step 2e: log + broadcast discovery to clients (subject to the
-            // type's reveal mode — broadcastDiscovery handles the filtering).
+            // Step 2e: log + sync the overlap result to clients.
             if (Config.LOG_PLACEMENT.get()) {
                 Coedeposits.LOGGER.info(
                         "[coedeposits] placed {} at chunk {},{} | {} chunks | tier {} | target {} units/chunk peak (ref recipe {})",
-                        placed.typeId(), cp.x, cp.z, placed.chunks().size(),
+                        placed.typeId(), cp.x, cp.z, dep.chunks().size(),
                         String.format("%.2f", placed.tierFraction()),
                         String.format("%,.0f", targetUnits),
                         referenceRecipeId);
             }
-            broadcastDiscovery(lvl, dep);
+            syncOverlap(lvl, store, res, candidate.id());
             return null;
         }
 
@@ -337,6 +342,38 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
     /** Build a human-readable deposit label like {@code "iron@128,256"}. */
     private static String nameFor(ResourceLocation typeId, ChunkPos cp) {
         return typeId.getPath() + "@" + (cp.x * 16) + "," + (cp.z * 16);
+    }
+
+    /** Weight of a deposit type — Integer.MAX_VALUE for an unknown type (treated as most common, so it always yields). */
+    static int weightOf(ResourceLocation typeId) {
+        DepositType t = Coedeposits.DEPOSIT_TYPES.get(typeId);
+        return t != null ? t.weight() : Integer.MAX_VALUE;
+    }
+
+    /**
+     * Push a {@link DepositSavedData.OverlapResult} to clients: removals for
+     * absorbed deposits, a reveal-aware re-sync for trimmed/merged deposits, and
+     * a full discovery (chat + sync) for a genuinely new deposit (one whose id
+     * still equals the candidate's). Trimmed chunks re-apply their OreData lazily
+     * when they next load through {@link #pick}'s Phase 1.
+     */
+    static void syncOverlap(ServerLevel lvl, DepositSavedData store,
+                            DepositSavedData.OverlapResult res, UUID candidateId) {
+        if (!res.removed().isEmpty()) {
+            CoedepositsNetwork.broadcastRemoval(lvl, new java.util.ArrayList<>(res.removed()));
+        }
+        java.util.List<Deposit> changed = new java.util.ArrayList<>();
+        for (UUID id : res.changed()) {
+            Deposit d = store.all().get(id);
+            if (d != null) changed.add(d);
+        }
+        if (!changed.isEmpty()) {
+            CoedepositsNetwork.broadcastSyncFiltered(lvl.getServer(), lvl, changed);
+        }
+        Deposit placed = res.placed();
+        if (placed != null && placed.id().equals(candidateId)) {
+            broadcastDiscovery(lvl, placed);  // genuinely new deposit
+        }
     }
 
     /**

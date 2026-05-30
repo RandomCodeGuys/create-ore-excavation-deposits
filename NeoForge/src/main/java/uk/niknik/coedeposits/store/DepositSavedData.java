@@ -4,17 +4,20 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.ToIntFunction;
 
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.NbtOps;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -157,6 +160,101 @@ public class DepositSavedData extends SavedData {
         addInternal(d);
         setDirty();
         return d;
+    }
+
+    /**
+     * Outcome of {@link #addResolvingOverlap}: {@code placed} is the resulting
+     * deposit — a fresh one, or the same-type deposit the candidate merged into
+     * ({@code null} when the candidate kept no chunks). {@code removed} are
+     * deposits fully absorbed (merged away or trimmed to empty); {@code changed}
+     * are deposits whose chunk set shrank or grew; {@code trimmedChunks} are
+     * chunks taken from a more-common deposit by the rarer candidate (their
+     * OreData should be re-applied for the new owner).
+     */
+    public record OverlapResult(Deposit placed, Set<UUID> removed, Set<UUID> changed, Set<ChunkPos> trimmedChunks) {}
+
+    /**
+     * Add a candidate deposit, resolving overlaps with already-placed deposits:
+     * <ul>
+     *   <li><b>Same type</b> — merge: the candidate's chunks join the existing
+     *       same-type deposit(s) into one (keeping the first one's id, core and
+     *       amountMul/reveal state).</li>
+     *   <li><b>Different type</b> — the lower-weight (rarer) type wins each
+     *       contested chunk. If the candidate is rarer it claims the chunk and
+     *       the more-common owner is trimmed (removed if it ends up empty);
+     *       otherwise the candidate yields that chunk.</li>
+     * </ul>
+     * Returns what changed so the caller can sync clients and re-apply OreData.
+     * (COE allows one vein per chunk, so different types can't truly co-occupy a
+     * chunk — the rarer just claims it, forming a mixed region.)
+     */
+    public OverlapResult addResolvingOverlap(Deposit candidate, ToIntFunction<ResourceLocation> weightOf) {
+        int newWeight = weightOf.applyAsInt(candidate.typeId());
+        Set<ChunkPos> claim = new HashSet<>();
+        Set<UUID> mergeInto = new LinkedHashSet<>();
+        Map<UUID, Set<ChunkPos>> trim = new HashMap<>();
+
+        for (ChunkPos cp : candidate.chunks()) {
+            UUID ownerId = chunkIndex.get(cp.toLong());
+            Deposit owner = ownerId != null ? deposits.get(ownerId) : null;
+            if (owner == null) {
+                claim.add(cp);
+            } else if (owner.typeId().equals(candidate.typeId())) {
+                mergeInto.add(owner.id());                              // same type → merge
+            } else if (newWeight < weightOf.applyAsInt(owner.typeId())) {
+                claim.add(cp);                                          // candidate rarer → wins
+                trim.computeIfAbsent(owner.id(), k -> new HashSet<>()).add(cp);
+            }
+            // else: the more-common candidate yields this chunk to the rarer owner.
+        }
+
+        Set<UUID> removed = new HashSet<>();
+        Set<UUID> changed = new HashSet<>();
+        Set<ChunkPos> trimmedChunks = new HashSet<>();
+
+        // ── Trim the more-common owners the rarer candidate took chunks from ──
+        for (Map.Entry<UUID, Set<ChunkPos>> e : trim.entrySet()) {
+            Deposit owner = deposits.get(e.getKey());
+            if (owner == null) continue;
+            Set<ChunkPos> remaining = new HashSet<>(owner.chunks());
+            remaining.removeAll(e.getValue());
+            trimmedChunks.addAll(e.getValue());
+            if (remaining.isEmpty()) {
+                remove(owner.id());
+                removed.add(owner.id());
+            } else {
+                replace(owner.withChunks(remaining));
+                changed.add(owner.id());
+            }
+        }
+
+        // ── Merge into an existing same-type deposit, or create a new one ─────
+        Deposit placed;
+        if (mergeInto.isEmpty()) {
+            if (claim.isEmpty()) {
+                return new OverlapResult(null, removed, changed, trimmedChunks);
+            }
+            placed = candidate.withChunks(claim);
+            add(placed);
+        } else {
+            UUID targetId = mergeInto.iterator().next();
+            Deposit target = deposits.get(targetId);
+            Set<ChunkPos> merged = new HashSet<>(target.chunks());
+            merged.addAll(claim);
+            for (UUID otherId : mergeInto) {
+                if (otherId.equals(targetId)) continue;
+                Deposit other = deposits.get(otherId);
+                if (other != null) {
+                    merged.addAll(other.chunks());
+                    remove(otherId);
+                    removed.add(otherId);
+                }
+            }
+            placed = target.withChunks(merged);
+            replace(placed);
+            changed.add(targetId);
+        }
+        return new OverlapResult(placed, removed, changed, trimmedChunks);
     }
 
     /** Internal add without setDirty — used by load() during deserialization. */

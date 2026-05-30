@@ -51,6 +51,11 @@ public record Deposit(
         DepositType.Placement placement,
         double replenishRateOverride) {
 
+    /** Copy with a replaced chunk set; id / core / amountMul / tier / placement unchanged. */
+    public Deposit withChunks(Set<ChunkPos> newChunks) {
+        return new Deposit(id, typeId, name, core, newChunks, amountMul, tierFraction, placement, replenishRateOverride);
+    }
+
     /**
      * Resolve the effective replenishment rate (units/hour). Per-deposit
      * override wins when positive; otherwise falls back to the type's default
