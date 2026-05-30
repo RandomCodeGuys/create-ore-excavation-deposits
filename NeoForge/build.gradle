@@ -163,6 +163,19 @@ dependencies {
     // <version>_<loader>_<mc> (matching our server: 1.40.16 / NeoForge / 1.21).
     compileOnly "maven.modrinth:xaeros-world-map:neoforge-1.21.1-1.40.16"
 
+    // YACL (Yet Another Config Lib) — OPTIONAL config-screen library. compileOnly
+    // so the YaclConfigScreen bridge compiles against its API; the mod
+    // soft-depends on it (neoforge.mods.toml optional + an
+    // isLoaded("yet_another_config_lib_v3") guard) and falls back to NeoForge's
+    // native ConfigurationScreen when absent. localRuntime pulls it into
+    // runClient so the YACL path is exercised in dev. Cross-loader: the same
+    // bridge becomes the PRIMARY screen on the planned Fabric port (Fabric has
+    // no native config screen) via ModMenu. Modrinth version_id 7TVdVtxF =
+    // 3.8.2+1.21.1-neoforge (look up new ids via
+    //   /v2/project/yacl/version?game_versions=["1.21.1"]&loaders=["neoforge"]).
+    compileOnly "maven.modrinth:yacl:7TVdVtxF"
+    localRuntime "maven.modrinth:yacl:7TVdVtxF"
+
     // Dev-only QoL mods loaded into runClient/runServer. Not shipped with the
     // published artifact, just helpers while iterating in IDE.
     //
@@ -323,6 +336,9 @@ publishMods {
         }
         optional {
             slug = "xaeros-minimap"
+        }
+        optional {
+            slug = "yacl"
         }
     }
 }

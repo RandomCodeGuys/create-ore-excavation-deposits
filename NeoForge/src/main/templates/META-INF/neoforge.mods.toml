@@ -99,6 +99,17 @@ config="${mod_id}.mixins.json"
     ordering="AFTER"
     side="BOTH"
 
+# YACL (Yet Another Config Lib) — OPTIONAL. When present, CoedepositsClient
+# routes Mods → Config through our YACL screen; when absent we fall back to
+# NeoForge's native ConfigurationScreen (or cede to Configured et al.). side
+# CLIENT — it only draws the config GUI, never needed on a dedicated server.
+[[dependencies.${mod_id}]]
+    modId="yet_another_config_lib_v3"
+    type="optional"
+    versionRange="[3.6,)"
+    ordering="NONE"
+    side="CLIENT"
+
 # Features are specific properties of the game environment, that you may want to declare you require. This example declares
 # that your mod requires GL version 3.2 or higher. Other features will be added. They are side aware so declaring this won't
 # stop your mod loading on the server for example.

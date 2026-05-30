@@ -283,13 +283,13 @@ public class Config {
 
     /** Mod lifecycle events (picker install, type registry loaded, shutdown drain, etc.). */
     public static final ModConfigSpec.BooleanValue LOG_LIFECYCLE = BUILDER
-            .comment("Log mod lifecycle events: picker installed on COE, deposit types loaded,",
-                    "scan-queue shutdown drain on server stop, default deposits.json written on",
-                    "first run. Sparse — only a handful of lines per server cycle.")
+            .comment("Log mod lifecycle events: picker installed on COE, deposit types loaded",
+                    "(datapack + config-overlay counts), scan-queue shutdown drain on server stop.",
+                    "Sparse — only a handful of lines per server cycle.")
             .define("log_lifecycle", true);
 
     /** Built once at class-init, registered with the mod container at startup. */
-    static final ModConfigSpec SPEC = BUILDER.build();
+    public static final ModConfigSpec SPEC = BUILDER.build();
 
     /**
      * Cached parsed view of {@link #ENABLED_DIMENSIONS}. Lazily rebuilt when
