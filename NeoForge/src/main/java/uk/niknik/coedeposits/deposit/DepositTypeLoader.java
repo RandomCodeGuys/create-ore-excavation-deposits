@@ -33,7 +33,7 @@ import uk.niknik.coedeposits.Config;
  * with a config-file override on top:
  *
  * <ol>
- *   <li><b>Datapack layer</b> — every {@code data/<ns>/coedeposits/deposit_type/*.json}
+ *   <li><b>Datapack layer</b> — every {@code data/<ns>/deposit_type/*.json}
  *       in the active server-data packs, decoded through {@link DepositType#CODEC}.
  *       The mod ships the 14 standard ores here in its own jar; other datapacks,
  *       KubeJS or CraftTweaker can add new types or override the bundled ones via
@@ -73,9 +73,15 @@ import uk.niknik.coedeposits.Config;
  * (reserved for inline JSON comments such as {@code "_comment": "..."}).
  */
 public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTypeLoader.Prepared> {
-    /** Datapack directory scanned for type files: {@code data/<ns>/coedeposits/deposit_type/*.json}. */
+    /**
+     * Datapack directory scanned for type files: {@code data/<ns>/deposit_type/*.json}.
+     * Namespace-root folder (like vanilla {@code recipe/} / {@code loot_table/}),
+     * NOT a {@code coedeposits/}-prefixed sub-path — the converter prefix is the
+     * in-namespace path, so {@code coedeposits/deposit_type} would never match a
+     * file whose in-namespace path is {@code deposit_type/iron.json}.
+     */
     private static final FileToIdConverter DEPOSIT_TYPE_LISTER =
-            FileToIdConverter.json("coedeposits/deposit_type");
+            FileToIdConverter.json("deposit_type");
 
     /** Sub-folder under {@code config/} where the optional override file lives. */
     private static final String CONFIG_SUBDIR = "coedeposits";
@@ -122,6 +128,17 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
             Coedeposits.LOGGER.info(
                     "[coedeposits] loaded {} deposit types ({} datapack + {} config-overlay override(s)): {}",
                     types.size(), prepared.datapackCount(), prepared.overlayCount(), types.keySet());
+        }
+        // Structural config validation — log every reload (server start + /reload)
+        // so silent misconfigs (empty recipe pool, degenerate budget, oversize
+        // blobs) surface in the log. Recipe-resolution issues need the loaded
+        // recipe manager and are reported separately on datapack sync.
+        for (DepositConfigValidator.Issue issue : DepositConfigValidator.validateStructure(types)) {
+            if (issue.severity() == DepositConfigValidator.Severity.ERROR) {
+                Coedeposits.LOGGER.error("[coedeposits] config — {}: {}", issue.typeId(), issue.message());
+            } else {
+                Coedeposits.LOGGER.warn("[coedeposits] config — {}: {}", issue.typeId(), issue.message());
+            }
         }
     }
 
@@ -194,7 +211,12 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
                     .resultOrPartial(err -> Coedeposits.LOGGER.error(
                             "[coedeposits] {}: failed to parse '{}': {}", file, key, err));
             if (parsed.isPresent()) {
-                out.put(id, parsed.get());
+                // Same inline-vein binding + junk-id pruning the datapack layer
+                // gets — without this an overlay entry that relies on its inline
+                // `vein:` block (no explicit vein_recipes) loads with an EMPTY
+                // pool, so the picker/scanner silently drop it (materialize bails
+                // on veinRecipes().isEmpty()).
+                out.put(id, bindInlineRecipe(id, parsed.get()));
                 count++;
             }
         }

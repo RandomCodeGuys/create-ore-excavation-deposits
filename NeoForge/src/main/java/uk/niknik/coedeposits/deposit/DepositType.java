@@ -17,7 +17,7 @@ import uk.niknik.coedeposits.Config;
 
 /**
  * Blueprint for one ore type. Loaded by {@link DepositTypeLoader} from the
- * datapack {@code data/<ns>/coedeposits/deposit_type/*.json} files (the 14
+ * datapack {@code data/<ns>/deposit_type/*.json} files (the 14
  * standard ores ship in the jar) plus the optional
  * {@code config/coedeposits/deposits.json} overlay applied on top.
  *
