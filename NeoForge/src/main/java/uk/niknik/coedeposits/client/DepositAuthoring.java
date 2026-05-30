@@ -80,6 +80,12 @@ public final class DepositAuthoring {
     /** One editable deposit type. {@link #id} is the {@code namespace:path} key. */
     public static final class Draft {
         public String id = "coedeposits:new_deposit";
+        /** Seeded from the live registry (a bundled/datapack default), not the overlay file.
+         *  Untouched defaults are NOT written back to deposits.json — see {@link #save}. */
+        public boolean fromDefault = false;
+        /** Disabled via the editor → persisted as {@code "enabled": false}, which the
+         *  loader uses to drop the id from the merged registry entirely. */
+        public boolean disabled = false;
         public DepositType.Placement placement = DepositType.Placement.MANAGED;
         public final List<RecipeEntry> veinRecipes = new ArrayList<>();
         public String veinRecipeInfinite = "";
@@ -147,6 +153,16 @@ public final class DepositAuthoring {
                 if (e.getKey().startsWith("_")) continue;
                 ResourceLocation id = ResourceLocation.tryParse(e.getKey());
                 if (id == null) continue;
+                // Disable directive: a bare {"enabled": false} entry can't (and
+                // shouldn't) decode as a full DepositType — surface it as a
+                // disabled draft so the editor shows it greyed-out, not absent.
+                if (isDisableDirective(e.getValue())) {
+                    Draft off = new Draft();
+                    off.id = id.toString();
+                    off.disabled = true;
+                    drafts.add(off);
+                    continue;
+                }
                 DepositType.CODEC.parse(JsonOps.INSTANCE, e.getValue())
                         .resultOrPartial(err -> Coedeposits.LOGGER.error(
                                 "[coedeposits] editor: failed to load '{}': {}", e.getKey(), err))
@@ -154,6 +170,38 @@ public final class DepositAuthoring {
             }
         } catch (Exception ex) {
             Coedeposits.LOGGER.error("[coedeposits] editor: failed to read {}: {}", f, ex.toString());
+        }
+        return drafts;
+    }
+
+    /** True for a config entry that is solely an {@code {"enabled": false}} disable switch. */
+    private static boolean isDisableDirective(JsonElement el) {
+        if (!el.isJsonObject()) return false;
+        JsonElement en = el.getAsJsonObject().get("enabled");
+        return en != null && en.isJsonPrimitive() && !en.getAsBoolean();
+    }
+
+    /**
+     * Editor's view of every deposit type: the overlay drafts (authoritative —
+     * custom types, customised defaults, and disables) plus every live-registry
+     * type the overlay doesn't already cover, tagged {@link Draft#fromDefault}.
+     * Lets the editor list and edit the 14 bundled ores, not just config additions.
+     *
+     * <p>Registry source is {@link Coedeposits#DEPOSIT_TYPES}, populated on the
+     * integrated server — so on a dedicated server only the host (same JVM) sees
+     * defaults; a remote client still gets its own overlay entries.
+     */
+    public static List<Draft> loadMerged() {
+        List<Draft> drafts = load();
+        java.util.Set<String> have = new java.util.HashSet<>();
+        for (Draft d : drafts) have.add(d.id);
+        for (Map.Entry<ResourceLocation, DepositType> e
+                : Coedeposits.DEPOSIT_TYPES.all().entrySet()) {
+            String id = e.getKey().toString();
+            if (have.contains(id)) continue;  // overlay already defines/overrides it
+            Draft d = fromType(e.getKey(), e.getValue());
+            d.fromDefault = true;
+            drafts.add(d);
         }
         return drafts;
     }
@@ -170,10 +218,35 @@ public final class DepositAuthoring {
                 Coedeposits.LOGGER.error("[coedeposits] editor: skipping entry with invalid id '{}'", d.id);
                 continue;
             }
-            DepositType.CODEC.encodeStart(JsonOps.INSTANCE, toType(d))
+            // Disabled (default or custom): write only the {"enabled": false}
+            // directive — the loader drops the id from the registry. Takes
+            // precedence over the full-type encode below.
+            if (d.disabled) {
+                JsonObject off = new JsonObject();
+                off.addProperty("enabled", false);
+                root.add(id.toString(), off);
+                continue;
+            }
+            JsonElement encoded = DepositType.CODEC.encodeStart(JsonOps.INSTANCE, toType(d))
                     .resultOrPartial(err -> Coedeposits.LOGGER.error(
                             "[coedeposits] editor: failed to encode '{}': {}", d.id, err))
-                    .ifPresent(json -> root.add(id.toString(), json));
+                    .orElse(null);
+            if (encoded == null) continue;
+            // An untouched bundled/datapack default is left entirely to its
+            // datapack source — writing an identical copy to the overlay would
+            // freeze it and silently shadow future default changes. Compare the
+            // encoded form against the live default and persist only on a real
+            // diff. Errs toward persisting (any mismatch writes), so edits are
+            // never lost — only provably-unchanged defaults are skipped.
+            if (d.fromDefault) {
+                DepositType def = Coedeposits.DEPOSIT_TYPES.get(id);
+                if (def != null) {
+                    JsonElement defJson = DepositType.CODEC.encodeStart(JsonOps.INSTANCE, def)
+                            .result().orElse(null);
+                    if (encoded.equals(defJson)) continue;
+                }
+            }
+            root.add(id.toString(), encoded);
         }
         Path f = file();
         try {

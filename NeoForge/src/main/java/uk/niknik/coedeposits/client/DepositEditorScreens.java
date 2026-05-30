@@ -98,7 +98,7 @@ public final class DepositEditorScreens {
 
     /** Entry point from the global config screen's "Open deposit editor" button. */
     public static void open(Screen parent) {
-        drafts = DepositAuthoring.load();
+        drafts = DepositAuthoring.loadMerged();
         gatherCandidates();
         Minecraft.getInstance().setScreen(master(parent));
     }
@@ -172,23 +172,47 @@ public final class DepositEditorScreens {
         for (int i = 0; i < drafts.size(); i++) {
             Draft d = drafts.get(i);
             final int idx = i;
-            cat.group(OptionGroup.createBuilder()
-                    .name(Component.literal(d.id))
+            // Label suffix communicates provenance/state at a glance:
+            //   (default) — comes from a datapack/bundled type, not the overlay
+            //   (disabled) — turned off via {"enabled": false}
+            String suffix = d.disabled ? "  §c(disabled)§r"
+                    : d.fromDefault ? "  §8(default)§r" : "";
+
+            OptionGroup.Builder g = OptionGroup.createBuilder()
+                    .name(Component.literal(d.id + suffix))
                     .option(ButtonOption.createBuilder()
                             .name(Component.literal("Edit"))
-                            .text(Component.literal("Edit →"))
+                            .text(Component.literal(d.disabled ? "Edit (disabled)" : "Edit →"))
                             .action((screen, opt) -> Minecraft.getInstance().setScreen(detail(d, parent)))
                             .build())
+                    // Disable/Enable toggle — for defaults this is the only way to
+                    // turn a bundled ore off without deleting its datapack file;
+                    // for custom types it's a soft off-switch that keeps the config.
                     .option(ButtonOption.createBuilder()
-                            .name(Component.literal("Remove"))
-                            .text(Component.literal("✖ Remove"))
+                            .name(Component.literal(d.disabled ? "Enable" : "Disable"))
+                            .text(Component.literal(d.disabled ? "✔ Enable" : "⊘ Disable"))
                             .action((screen, opt) -> {
-                                if (idx < drafts.size()) drafts.remove(idx);
+                                d.disabled = !d.disabled;
                                 persist();
                                 Minecraft.getInstance().setScreen(master(parent));
                             })
-                            .build())
-                    .build());
+                            .build());
+
+            // Remove deletes the overlay entry outright. For a default that just
+            // drops the editor copy (the datapack default reappears on reopen),
+            // so only offer it for overlay-backed drafts to avoid confusion.
+            if (!d.fromDefault) {
+                g.option(ButtonOption.createBuilder()
+                        .name(Component.literal("Remove"))
+                        .text(Component.literal("✖ Remove"))
+                        .action((screen, opt) -> {
+                            if (idx < drafts.size()) drafts.remove(idx);
+                            persist();
+                            Minecraft.getInstance().setScreen(master(parent));
+                        })
+                        .build());
+            }
+            cat.group(g.build());
         }
 
         return YetAnotherConfigLib.createBuilder()

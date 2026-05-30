@@ -207,6 +207,20 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
                 Coedeposits.LOGGER.error("[coedeposits] {}: invalid deposit id '{}'", file, key);
                 continue;
             }
+            // Disable directive: a lightweight {"enabled": false} entry removes the
+            // id from the merged registry (datapack default or otherwise) without
+            // needing to be a full valid DepositType. This is the config-level
+            // "turn off a bundled ore" switch — the type then never generates, is
+            // not mineable, and disappears from JEI. Any other value of "enabled"
+            // (or its absence) means the entry is a normal type definition.
+            if (e.getValue().isJsonObject()) {
+                JsonElement en = e.getValue().getAsJsonObject().get("enabled");
+                if (en != null && en.isJsonPrimitive() && !en.getAsBoolean()) {
+                    out.remove(id);
+                    count++;
+                    continue;
+                }
+            }
             Optional<DepositType> parsed = DepositType.CODEC.parse(JsonOps.INSTANCE, e.getValue())
                     .resultOrPartial(err -> Coedeposits.LOGGER.error(
                             "[coedeposits] {}: failed to parse '{}': {}", file, key, err));
