@@ -21,6 +21,7 @@ import dev.isxander.yacl3.api.controller.EnumControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
 
 import uk.niknik.coedeposits.ClientConfig;
+import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.Config;
 
 /**
@@ -71,12 +72,14 @@ public final class YaclConfigScreen {
                         Config.BASE_RADIUS, 1.0, 1_000_000.0, 0))
                 .option(dbl("Max radius", "Saturation radius (blocks): tier ~= 1.0 at and beyond this distance.",
                         Config.MAX_RADIUS, 1.0, 10_000_000.0, 0))
-                .option(dbl("Core spawn probability",
-                        "Per-chunk chance of a new deposit-core candidate. Default 0.0005 (~1 per 2000 chunks); "
-                                + "0.005-0.05 = denser maps, 0.0001 = rarer.",
-                        Config.CORE_SPAWN_PROBABILITY, 0.0, 1.0, 5))
-                .option(dbl("Edge amount mul", "Outer-chunk richness as a fraction of the core's amountMul.",
-                        Config.EDGE_AMOUNT_MUL, 0.0, 1.0, 2))
+                .option(scaledDbl("Core spawn (per 100k chunks)",
+                        "Deposit-core candidate rolls per 100,000 chunks. Default 50 (= 0.0005/chunk, ~1 per 2000). "
+                                + "Higher = denser maps (500 ≈ 0.005); lower = rarer (10 ≈ 0.0001). Whole numbers "
+                                + "so fine probabilities stay editable.",
+                        Config.CORE_SPAWN_PROBABILITY, 100_000.0, 0, 100_000))
+                .option(scaledDbl("Edge richness (%)",
+                        "Outer-chunk richness as a percentage of the core's amountMul. Default 30 (= 0.30).",
+                        Config.EDGE_AMOUNT_MUL, 100.0, 0, 100))
                 .option(dbl("Unbounded growth", "Far-deposit scaling used when a type's per_chunk_units.max is absent.",
                         Config.UNBOUNDED_GROWTH, 0.0, 100_000.0, 1))
                 .group(OptionGroup.createBuilder()
@@ -148,20 +151,64 @@ public final class YaclConfigScreen {
 
     // ── option helpers (bind each YACL Option straight to its ModConfigSpec value)
 
+    /**
+     * Binding setter shared by every option helper. Writes the value to the
+     * ModConfigSpec AND flushes to disk immediately — so persistence no longer
+     * depends on YACL's separate {@code .save()} callback running after the
+     * apply phase. The log line confirms the binding actually fires with the
+     * edited value (diagnostic for "values don't save").
+     */
+    private static <T> void persist(ModConfigSpec.ConfigValue<T> v, T val, String name) {
+        if (Config.LOG_LIFECYCLE.get()) {
+            Coedeposits.LOGGER.info("[coedeposits] config '{}' applied -> {}", name, val);
+        }
+        v.set(val);
+        v.save();
+    }
+
     private static Option<Double> dbl(String name, String desc, ModConfigSpec.DoubleValue v,
                                       double min, double max, int decimals) {
         return Option.<Double>createBuilder()
                 .name(Component.literal(name))
                 .description(OptionDescription.of(Component.literal(desc)))
-                .binding(v.getDefault(), v::get, v::set)
+                .binding(v.getDefault(), v::get, val -> persist(v, val, name))
                 .controller(opt -> DoubleFieldControllerBuilder.create(opt)
                         .min(min).max(max)
                         // YACL's default double controller shows only 2 decimals,
                         // which collapses small values like core_spawn_probability
                         // (0.0005) to "0.00" and blocks finer edits. Format each
-                        // value with the precision it actually needs. Default JVM
-                        // locale keeps the decimal separator matching YACL's parser.
-                        .formatValue(d -> Component.literal(String.format("%." + decimals + "f", d))))
+                        // value with the precision it actually needs. Locale.ROOT
+                        // forces a '.' separator: YACL's field parser is period-
+                        // based, so on a comma-locale client a formatted "0,0005"
+                        // fails to parse and reset / edit silently no-ops.
+                        .formatValue(d -> Component.literal(
+                                String.format(java.util.Locale.ROOT, "%." + decimals + "f", d))))
+                .build();
+    }
+
+    /**
+     * Bind an Integer YACL field to a {@link ModConfigSpec.DoubleValue} through a
+     * {@code scale} factor: the user edits whole numbers ({@code value × scale})
+     * while the config keeps the fine double. Sidesteps {@link DoubleFieldControllerBuilder}
+     * entirely — YACL's number field parses via a default-locale {@link java.text.NumberFormat}
+     * capped at 3 fraction digits, so a value like {@code core_spawn_probability=0.0005}
+     * (4 decimals) is literally unenterable there. As an integer ({@code 0.0005 × 100000 = 50})
+     * it is trivially editable and locale-proof.
+     *
+     * @param scale  multiplier mapping config double → editable integer (e.g. 100000)
+     * @param min    minimum in scaled (integer) units
+     * @param max    maximum in scaled (integer) units
+     */
+    private static Option<Integer> scaledDbl(String name, String desc, ModConfigSpec.DoubleValue v,
+                                             double scale, int min, int max) {
+        return Option.<Integer>createBuilder()
+                .name(Component.literal(name))
+                .description(OptionDescription.of(Component.literal(desc)))
+                .binding((int) Math.round(v.getDefault() * scale),
+                        () -> (int) Math.round(v.get() * scale),
+                        scaled -> persist(v, scaled / scale, name))
+                .controller(opt -> IntegerFieldControllerBuilder.create(opt).min(min).max(max)
+                        .formatValue(i -> Component.literal(String.format(java.util.Locale.ROOT, "%d", i))))
                 .build();
     }
 
@@ -169,8 +216,13 @@ public final class YaclConfigScreen {
         return Option.<Integer>createBuilder()
                 .name(Component.literal(name))
                 .description(OptionDescription.of(Component.literal(desc)))
-                .binding(v.getDefault(), v::get, v::set)
-                .controller(opt -> IntegerFieldControllerBuilder.create(opt).min(min).max(max))
+                .binding(v.getDefault(), v::get, val -> persist(v, val, name))
+                .controller(opt -> IntegerFieldControllerBuilder.create(opt).min(min).max(max)
+                        // Plain digits, no locale grouping ("2000" not "2 000"):
+                        // a grouped/spaced display can break YACL's field parser on
+                        // re-validation and silently revert the edit — same failure
+                        // class as the double fields' comma separator.
+                        .formatValue(i -> Component.literal(String.format(java.util.Locale.ROOT, "%d", i))))
                 .build();
     }
 
@@ -178,7 +230,7 @@ public final class YaclConfigScreen {
         return Option.<Boolean>createBuilder()
                 .name(Component.literal(name))
                 .description(OptionDescription.of(Component.literal(desc)))
-                .binding(v.getDefault(), v::get, v::set)
+                .binding(v.getDefault(), v::get, val -> persist(v, val, name))
                 .controller(opt -> BooleanControllerBuilder.create(opt).onOffFormatter().coloured(true))
                 .build();
     }
@@ -188,7 +240,7 @@ public final class YaclConfigScreen {
         return Option.<E>createBuilder()
                 .name(Component.literal(name))
                 .description(OptionDescription.of(Component.literal(desc)))
-                .binding(v.getDefault(), v::get, v::set)
+                .binding(v.getDefault(), v::get, val -> persist(v, val, name))
                 .controller(opt -> EnumControllerBuilder.create(opt)
                         .enumClass(cls)
                         .formatValue(e -> Component.literal(e.getSerializedName())))

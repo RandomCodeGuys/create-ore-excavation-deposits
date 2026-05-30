@@ -34,6 +34,7 @@
   "coedeposits.tooltip.stats": "Chunks: %s",
   "coedeposits.tooltip.ores": "Ores: %s",
   "coedeposits.tooltip.drill_yields": "Drill yields: %s",
+  "coedeposits.tooltip.drill_yields_header": "Drill yields:",
   "coedeposits.tooltip.replenishing": "Replenishing: %s units/hour",
   "coedeposits.tooltip.chunk_remaining": "This chunk: %s / %s units",
   "coedeposits.tooltip.chunk_remaining_named": "This chunk: %s — %s / %s units",

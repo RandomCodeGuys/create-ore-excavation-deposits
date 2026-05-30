@@ -34,6 +34,7 @@
   "coedeposits.tooltip.stats": "Чанков: %s",
   "coedeposits.tooltip.ores": "Руды: %s",
   "coedeposits.tooltip.drill_yields": "Выход дрели: %s",
+  "coedeposits.tooltip.drill_yields_header": "Выход дрели:",
   "coedeposits.tooltip.replenishing": "Восполнение: %s ед./час",
   "coedeposits.tooltip.chunk_remaining": "В этом чанке: %s / %s ед.",
   "coedeposits.tooltip.chunk_remaining_named": "В этом чанке: %s — %s / %s ед.",

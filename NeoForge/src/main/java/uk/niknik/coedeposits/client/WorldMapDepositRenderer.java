@@ -333,9 +333,14 @@ public final class WorldMapDepositRenderer {
             boolean isInteresting = outs.size() > 1
                     || (outs.size() == 1 && outs.get(0).chance() < 1.0f);
             if (isInteresting) {
-                String yieldsList = formatDrillOutputs(outs);
-                out.add(Component.translatable("coedeposits.tooltip.drill_yields", yieldsList)
+                // Header + one indented line per output, so long recipe lists
+                // stack vertically instead of stretching the tooltip off-screen.
+                out.add(Component.translatable("coedeposits.tooltip.drill_yields_header")
                         .withStyle(ChatFormatting.LIGHT_PURPLE));
+                for (DepositSnapshot.DrillOutputEntry o : outs) {
+                    out.add(Component.literal("  " + formatDrillOutput(o))
+                            .withStyle(ChatFormatting.LIGHT_PURPLE));
+                }
             }
         }
 
@@ -421,34 +426,25 @@ public final class WorldMapDepositRenderer {
      * </ul>
      */
     /**
-     * Render a drilling recipe's output list as a comma-separated string for
-     * the "drill yields:" tooltip line. Output items with {@code chance == 1.0}
-     * show as just their name; lower chances append " 65%". Multi-count
-     * outputs prefix the name with "{N}× ".
+     * Format ONE drilling output for a line of the "drill yields" tooltip
+     * column. {@code chance == 1.0} shows just the name; lower chances append
+     * " 65%". Multi-count outputs prefix the name with "{N}× ".
      *
-     * <p>Examples:
-     * <ul>
-     *   <li>{@code [iron(1.0), copper(0.5)]} → {@code "raw iron, raw copper 50%"}</li>
-     *   <li>{@code [iron(0.65), copper(0.35), cobblestone(0.2)]} →
-     *       {@code "raw iron 65%, raw copper 35%, cobblestone 20%"}</li>
-     * </ul>
+     * <p>Examples: {@code "Raw Iron"}, {@code "Raw Copper 50%"},
+     * {@code "64× Crushed Raw Uranium 20%"}.
      */
-    private static String formatDrillOutputs(java.util.List<DepositSnapshot.DrillOutputEntry> outs) {
+    private static String formatDrillOutput(DepositSnapshot.DrillOutputEntry e) {
         StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < outs.size(); i++) {
-            if (i > 0) sb.append(", ");
-            DepositSnapshot.DrillOutputEntry e = outs.get(i);
-            String name = formatItemName(e.itemId());
-            if (e.count() > 1) {
-                sb.append(e.count()).append("× ");
-            }
-            sb.append(name);
-            // Chance display: hide when 1.0 (guaranteed drop — clutters with
-            // 100% on every guaranteed item), show as integer percentage otherwise.
-            if (e.chance() < 1.0f) {
-                int pct = Math.round(e.chance() * 100f);
-                sb.append(' ').append(pct).append('%');
-            }
+        String name = formatItemName(e.itemId());
+        if (e.count() > 1) {
+            sb.append(e.count()).append("× ");
+        }
+        sb.append(name);
+        // Chance display: hide when 1.0 (guaranteed drop — clutters with 100%
+        // on every guaranteed item), show as integer percentage otherwise.
+        if (e.chance() < 1.0f) {
+            int pct = Math.round(e.chance() * 100f);
+            sb.append(' ').append(pct).append('%');
         }
         return sb.toString();
     }
