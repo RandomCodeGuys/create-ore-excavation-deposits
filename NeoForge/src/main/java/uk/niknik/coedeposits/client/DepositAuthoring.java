@@ -195,8 +195,7 @@ public final class DepositAuthoring {
         List<Draft> drafts = load();
         java.util.Set<String> have = new java.util.HashSet<>();
         for (Draft d : drafts) have.add(d.id);
-        for (Map.Entry<ResourceLocation, DepositType> e
-                : Coedeposits.DEPOSIT_TYPES.all().entrySet()) {
+        for (Map.Entry<ResourceLocation, DepositType> e : defaultTypes().entrySet()) {
             String id = e.getKey().toString();
             if (have.contains(id)) continue;  // overlay already defines/overrides it
             Draft d = fromType(e.getKey(), e.getValue());
@@ -205,6 +204,86 @@ public final class DepositAuthoring {
         }
         return drafts;
     }
+
+    /** Cache of the mod jar's bundled deposit_type defaults (lazy, read once). */
+    private static Map<ResourceLocation, DepositType> bundledCache;
+
+    /**
+     * Source of "default" deposit types for the editor. Prefers the live registry
+     * ({@link Coedeposits#DEPOSIT_TYPES}) when populated — that's the in-world case
+     * and also surfaces third-party datapack types. Falls back to the mod jar's own
+     * bundled defaults when the registry is empty, i.e. the <b>main menu</b>, where
+     * no world (hence no datapack reload) has run yet. Without the fallback the
+     * editor showed zero default ores in the main menu — you had to enter a world.
+     */
+    private static Map<ResourceLocation, DepositType> defaultTypes() {
+        Map<ResourceLocation, DepositType> live = Coedeposits.DEPOSIT_TYPES.all();
+        if (live != null && !live.isEmpty()) return live;
+        return bundledDefaults();
+    }
+
+    /**
+     * Read the 14 bundled {@code data/coedeposits/deposit_type/*.json} straight from
+     * the mod jar via the NeoForge mod-file API. Available at any time, including the
+     * main menu, because the mod jar is always mounted on the classpath. Cached after
+     * the first call.
+     */
+    private static Map<ResourceLocation, DepositType> bundledDefaults() {
+        if (bundledCache != null) return bundledCache;
+        Map<ResourceLocation, DepositType> out = new java.util.HashMap<>();
+        try {
+            var info = net.neoforged.fml.ModList.get().getModFileById(Coedeposits.MODID);
+            Path dir = info != null
+                    ? info.getFile().findResource("data", Coedeposits.MODID, "deposit_type")
+                    : null;
+            if (dir != null && Files.isDirectory(dir)) {
+                try (var stream = Files.list(dir)) {
+                    stream.filter(p -> p.getFileName().toString().endsWith(".json")).forEach(p -> {
+                        String fn = p.getFileName().toString();
+                        String name = fn.substring(0, fn.length() - ".json".length());
+                        ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Coedeposits.MODID, name);
+                        try (Reader r = Files.newBufferedReader(p, StandardCharsets.UTF_8)) {
+                            DepositType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseReader(r))
+                                    .result().ifPresent(t -> out.put(id, t));
+                        } catch (Exception ex) {
+                            Coedeposits.LOGGER.error(
+                                    "[coedeposits] editor: failed reading bundled default '{}': {}", id, ex.toString());
+                        }
+                    });
+                }
+            }
+        } catch (Exception ex) {
+            Coedeposits.LOGGER.error("[coedeposits] editor: failed enumerating bundled defaults: {}", ex.toString());
+        }
+        if (out.isEmpty()) {
+            // Fallback: enumerate the known bundled ids off the classpath. The
+            // mod-file path read above is the normal route (and works in dev +
+            // jar); this guards against an empty result so the editor never
+            // silently loses its defaults again.
+            for (String name : BUNDLED_DEFAULT_NAMES) {
+                ResourceLocation id = ResourceLocation.fromNamespaceAndPath(Coedeposits.MODID, name);
+                String res = "/data/" + Coedeposits.MODID + "/deposit_type/" + name + ".json";
+                try (var in = DepositAuthoring.class.getResourceAsStream(res)) {
+                    if (in == null) continue;
+                    try (Reader r = new java.io.InputStreamReader(in, StandardCharsets.UTF_8)) {
+                        DepositType.CODEC.parse(JsonOps.INSTANCE, JsonParser.parseReader(r))
+                                .result().ifPresent(t -> out.put(id, t));
+                    }
+                } catch (Exception ex) {
+                    Coedeposits.LOGGER.error(
+                            "[coedeposits] editor: classpath fallback failed for '{}': {}", id, ex.toString());
+                }
+            }
+        }
+        bundledCache = Map.copyOf(out);
+        return bundledCache;
+    }
+
+    /** Ids of the ores shipped in the mod jar's {@code data/coedeposits/deposit_type/} — classpath fallback list. */
+    private static final String[] BUNDLED_DEFAULT_NAMES = {
+            "ancient_debris", "coal", "copper", "diamond", "emerald", "glowstone",
+            "gold", "iron", "lapis", "nether_gold", "nether_quartz", "quartz", "redstone", "zinc"
+    };
 
     /** Encode every draft via the codec and write the overlay file (pretty JSON). */
     public static void save(List<Draft> drafts) {
@@ -239,7 +318,7 @@ public final class DepositAuthoring {
             // diff. Errs toward persisting (any mismatch writes), so edits are
             // never lost — only provably-unchanged defaults are skipped.
             if (d.fromDefault) {
-                DepositType def = Coedeposits.DEPOSIT_TYPES.get(id);
+                DepositType def = defaultTypes().get(id);
                 if (def != null) {
                     JsonElement defJson = DepositType.CODEC.encodeStart(JsonOps.INSTANCE, def)
                             .result().orElse(null);
