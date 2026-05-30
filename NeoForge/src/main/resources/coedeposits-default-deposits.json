@@ -1,6 +1,6 @@
 {
-  "_comment": "coedeposits — single source-of-truth deposit registry. Top-level keys are deposit ids (namespace:path). Edit and run /reload to refresh in-game. To restore defaults, delete this file — it will be regenerated on next server start.",
-  "_layout_note": "Entries are grouped by dimension via the `dimensions` field on each one. Every entry also declares an explicit `biome_filter` so there are no surprise spawns in unintended biomes.",
+  "_comment": "coedeposits — REFERENCE TEMPLATE. The 14 standard ores below also ship as datapack files (data/coedeposits/deposit_type/*.json) and load automatically. Copy this file to config/coedeposits/deposits.json to override/extend them: entries here win over datapack types of the same id, and only this config overlay supports the inline vein:/drilling: example entries. Edit + /reload to refresh.",
+  "_layout_note": "Entries are grouped by dimension via the `dimensions` field on each one. Every entry also declares an explicit `biome_filter` so there are no surprise spawns in unintended biomes. Keys starting with `_` are comments (skipped by the loader).",
   "_schema_note": "Single-recipe entries use the legacy `vein_recipe: \"X\"` field. Multi-recipe entries use `vein_recipes: [{recipe, weight}, ...]`. Optional: `fillers: [{weight}]` adds patchy 'tailings' chunks (default off — see `example_kitchen_sink` to enable). `replenish_rate_per_hour` (default 0 = off) restores units/hour to drilled chunks while loaded — see `example_replenishing_iron` below.",
 
   "_coal_note": "Per-block drilling (coal + cobblestone 30% + dirt 15% slag). Large consistent coal seams.",

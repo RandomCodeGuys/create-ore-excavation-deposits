@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:gold_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 1000,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 3,
+    "max": 12
+  },
+  "per_chunk_units": {
+    "min": 10000,
+    "max": 80000
+  },
+  "weight": 40,
+  "map_color": 16763955,
+  "biome_filter": [
+    "minecraft:is_badlands",
+    "minecraft:is_savanna",
+    "c:is_hot/overworld"
+  ]
+}

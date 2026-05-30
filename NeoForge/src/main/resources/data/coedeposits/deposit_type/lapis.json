@@ -1,0 +1,22 @@
+{
+  "vein_recipe": "coedeposits:lapis_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 500,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 2,
+    "max": 8
+  },
+  "per_chunk_units": {
+    "min": 8000,
+    "max": 50000
+  },
+  "weight": 50,
+  "map_color": 3368652,
+  "biome_filter": [
+    "c:is_mountain",
+    "minecraft:is_savanna"
+  ]
+}

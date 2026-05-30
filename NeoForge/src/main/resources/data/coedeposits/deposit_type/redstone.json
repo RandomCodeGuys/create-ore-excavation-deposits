@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:redstone_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 4,
+    "max": 14
+  },
+  "per_chunk_units": {
+    "min": 12000,
+    "max": 90000
+  },
+  "weight": 80,
+  "map_color": 13369344,
+  "biome_filter": [
+    "minecraft:is_badlands",
+    "c:is_desert",
+    "c:is_dry/overworld"
+  ]
+}

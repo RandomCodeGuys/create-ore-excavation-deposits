@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:zinc_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 3,
+    "max": 18
+  },
+  "per_chunk_units": {
+    "min": 15000,
+    "max": 120000
+  },
+  "weight": 80,
+  "map_color": 12895390,
+  "biome_filter": [
+    "c:is_mountain",
+    "minecraft:is_savanna",
+    "minecraft:is_badlands"
+  ]
+}

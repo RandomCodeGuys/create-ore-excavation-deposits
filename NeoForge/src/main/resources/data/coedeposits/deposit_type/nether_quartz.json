@@ -1,0 +1,21 @@
+{
+  "vein_recipe": "coedeposits:nether_quartz_vein",
+  "dimensions": "minecraft:the_nether",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 4,
+    "max": 25
+  },
+  "per_chunk_units": {
+    "min": 25000,
+    "max": 220000
+  },
+  "weight": 220,
+  "map_color": 15790824,
+  "biome_filter": [
+    "minecraft:is_nether"
+  ]
+}

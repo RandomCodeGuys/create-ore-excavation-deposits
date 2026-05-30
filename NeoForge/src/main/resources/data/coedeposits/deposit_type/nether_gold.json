@@ -1,0 +1,21 @@
+{
+  "vein_recipe": "coedeposits:nether_gold_vein",
+  "dimensions": "minecraft:the_nether",
+  "distance": {
+    "min": 500,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 3,
+    "max": 15
+  },
+  "per_chunk_units": {
+    "min": 12000,
+    "max": 90000
+  },
+  "weight": 90,
+  "map_color": 16763955,
+  "biome_filter": [
+    "minecraft:is_nether"
+  ]
+}

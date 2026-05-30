@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:copper_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 4,
+    "max": 30
+  },
+  "per_chunk_units": {
+    "min": 25000,
+    "max": 200000
+  },
+  "weight": 180,
+  "map_color": 13395507,
+  "biome_filter": [
+    "c:is_mountain",
+    "minecraft:is_jungle",
+    "c:is_dripstone_caves"
+  ]
+}

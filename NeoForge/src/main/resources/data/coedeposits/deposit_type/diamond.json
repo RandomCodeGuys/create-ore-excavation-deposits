@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:diamond_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 3000,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 2,
+    "max": 5
+  },
+  "per_chunk_units": {
+    "min": 2500,
+    "max": 20000
+  },
+  "weight": 10,
+  "map_color": 6737407,
+  "biome_filter": [
+    "c:is_mountain",
+    "c:is_cold/overworld",
+    "c:is_icy"
+  ]
+}

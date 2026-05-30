@@ -16,9 +16,10 @@ import com.mojang.serialization.codecs.RecordCodecBuilder;
 import uk.niknik.coedeposits.Config;
 
 /**
- * Blueprint for one ore type. Loaded by {@link DepositTypeLoader} from
- * the single external config file {@code config/coedeposits/deposits.json}
- * (auto-created on first run from the jar's bundled defaults).
+ * Blueprint for one ore type. Loaded by {@link DepositTypeLoader} from the
+ * datapack {@code data/<ns>/coedeposits/deposit_type/*.json} files (the 14
+ * standard ores ship in the jar) plus the optional
+ * {@code config/coedeposits/deposits.json} overlay applied on top.
  *
  * <h2>Unified inline schema (0.1.2+)</h2>
  * A type can carry inline {@link VeinSpec} and {@link DrillingSpec} blocks

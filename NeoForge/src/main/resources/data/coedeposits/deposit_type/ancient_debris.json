@@ -1,0 +1,21 @@
+{
+  "vein_recipe": "coedeposits:ancient_debris_vein",
+  "dimensions": "minecraft:the_nether",
+  "distance": {
+    "min": 2500,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 2,
+    "max": 6
+  },
+  "per_chunk_units": {
+    "min": 800,
+    "max": 6000
+  },
+  "weight": 12,
+  "map_color": 4862784,
+  "biome_filter": [
+    "minecraft:is_nether"
+  ]
+}

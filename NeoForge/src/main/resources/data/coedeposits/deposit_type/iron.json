@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:iron_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 4,
+    "max": 30
+  },
+  "per_chunk_units": {
+    "min": 20000,
+    "max": 200000
+  },
+  "weight": 150,
+  "map_color": 12895428,
+  "biome_filter": [
+    "c:is_mountain",
+    "minecraft:is_taiga",
+    "minecraft:is_hill"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "vein_recipe": "coedeposits:emerald_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 2000,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 2,
+    "max": 6
+  },
+  "per_chunk_units": {
+    "min": 3000,
+    "max": 25000
+  },
+  "weight": 15,
+  "map_color": 3394662,
+  "biome_filter": [
+    "c:is_mountain",
+    "minecraft:is_taiga"
+  ]
+}

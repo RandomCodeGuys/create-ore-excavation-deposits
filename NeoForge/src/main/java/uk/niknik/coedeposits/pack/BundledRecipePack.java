@@ -155,9 +155,10 @@ public class BundledRecipePack extends AbstractPackResources {
         Map<ResourceLocation, byte[]> out = new HashMap<>();
         Path file = FMLPaths.CONFIGDIR.get().resolve(DEPOSITS_JSON_PATH);
         if (!Files.exists(file)) {
-            // Config not yet copied — happens during fresh server start before
-            // DepositTypeLoader's ensureExists path runs. No inline recipes
-            // until next reload; bundled ones (in jar's data/) still load.
+            // No config overlay present — the normal state now that deposit
+            // types ship as datapack files. Datapack types reference real
+            // recipes, so there's nothing to synthesise here; inline
+            // vein:/drilling: lives only in the optional config overlay.
             return out;
         }
         try {
@@ -215,6 +216,12 @@ public class BundledRecipePack extends AbstractPackResources {
      */
     @Nullable
     private static ResourceLocation deriveVeinId(ResourceLocation typeId, JsonObject entry) {
+        // Inline vein takes precedence: a type with an inline `vein` block always
+        // synthesises at <typeId>_vein, so a stray vein_recipes reference can't
+        // point the recipe elsewhere. Mirrors DepositTypeLoader.bindInlineRecipe.
+        if (entry.has("vein") && entry.get("vein").isJsonObject()) {
+            return ResourceLocation.fromNamespaceAndPath(typeId.getNamespace(), typeId.getPath() + "_vein");
+        }
         if (entry.has("vein_recipe") && entry.get("vein_recipe").isJsonPrimitive()) {
             return ResourceLocation.tryParse(entry.get("vein_recipe").getAsString());
         }

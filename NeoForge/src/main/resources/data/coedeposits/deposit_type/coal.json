@@ -1,0 +1,24 @@
+{
+  "vein_recipe": "coedeposits:coal_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 6,
+    "max": 40
+  },
+  "per_chunk_units": {
+    "min": 30000,
+    "max": 300000
+  },
+  "weight": 200,
+  "map_color": 2236962,
+  "biome_filter": [
+    "minecraft:is_forest",
+    "minecraft:is_taiga",
+    "c:is_swamp",
+    "c:is_plains"
+  ]
+}

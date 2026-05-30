@@ -1,0 +1,24 @@
+{
+  "vein_recipe": "coedeposits:quartz_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 4,
+    "max": 20
+  },
+  "per_chunk_units": {
+    "min": 20000,
+    "max": 180000
+  },
+  "weight": 100,
+  "map_color": 15790824,
+  "biome_filter": [
+    "minecraft:is_badlands",
+    "minecraft:is_savanna",
+    "c:is_hot/overworld",
+    "c:is_dry/overworld"
+  ]
+}

@@ -159,9 +159,11 @@ All `/coedeposits` subcommands require permission level 2 (standard OP — grant
 | `/coedeposits replenish <rate>` | Set per-deposit replenishment override on the deposit at the player's chunk. `rate` is units/hour; `0` clears the override (deposit reverts to its type's default). |
 | `/coedeposits replenish all <rate>` | Same but applied to every deposit in the current dimension. |
 
-## Settings — `config/coedeposits/deposits.json`
+## Deposit types — datapack + config overlay
 
-All deposit types live in one external file under the server's config directory. On first run the mod copies the bundled defaults (`coedeposits-default-deposits.json` from the jar) to that path; thereafter the on-disk file is the only source of truth — datapacks no longer contribute. To restore the defaults, delete the file and restart the server.
+Deposit types load from two layers. **Datapack layer:** every `data/<ns>/coedeposits/deposit_type/<id>.json` in the active server-data packs — the mod ships the 14 standard ores in its own jar, and other datapacks / KubeJS / CraftTweaker can add new types or override the bundled ones by pack priority. **Config overlay (optional):** `config/coedeposits/deposits.json`, applied last so a hand-edit always wins over a datapack type of the same id. The file is no longer auto-created — a fresh install runs on the datapack defaults; copy the jar's `coedeposits-default-deposits.json` to that path for an editable starting point (it also carries the inline-recipe example entries).
+
+> **Inline `vein:` / `drilling:` synthesis works only in the config overlay.** A datapack-supplied type must reference an existing recipe via `vein_recipe` / `vein_recipes`, because the on-the-fly recipe synthesiser (`BundledRecipePack`) reads the config file from disk and can't see other datapacks during a reload.
 
 **Format:** a top-level JSON object whose keys are deposit ids (`namespace:path`) and whose values are deposit-type bodies. Keys starting with `_` are skipped (use them for inline comments).
 

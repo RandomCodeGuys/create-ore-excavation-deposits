@@ -1,0 +1,23 @@
+{
+  "vein_recipe": "coedeposits:glowstone_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 2,
+    "max": 10
+  },
+  "per_chunk_units": {
+    "min": 8000,
+    "max": 60000
+  },
+  "weight": 60,
+  "map_color": 16777130,
+  "biome_filter": [
+    "minecraft:is_badlands",
+    "c:is_hot/overworld",
+    "c:is_dry/overworld"
+  ]
+}
