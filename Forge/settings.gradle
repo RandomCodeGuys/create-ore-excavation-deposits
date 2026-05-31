@@ -1,0 +1,14 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { name = 'MinecraftForge'; url = 'https://maven.minecraftforge.net/' }
+        maven { name = 'Parchment'; url = 'https://maven.parchmentmc.org' }
+    }
+}
+
+plugins {
+    // Auto-provisions the JDK 17 toolchain ForgeGradle 1.20.1 needs.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.8.0'
+}
+
+rootProject.name = 'coedeposits-forge'

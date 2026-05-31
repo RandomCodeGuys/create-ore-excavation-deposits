@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Coal Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100001,
+    "separation": 8,
+    "spacing": 256
+  },
+  "icon": {
+    "item": "minecraft:coal"
+  },
+  "amountMin": 5.0,
+  "amountMax": 50.0
+}

@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Redstone Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100005,
+    "separation": 8,
+    "spacing": 256
+  },
+  "icon": {
+    "item": "minecraft:redstone"
+  },
+  "amountMin": 5.0,
+  "amountMax": 30.0
+}

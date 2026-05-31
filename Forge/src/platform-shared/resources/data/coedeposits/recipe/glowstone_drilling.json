@@ -1,0 +1,31 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {
+    "tag": "createoreexcavation:drills"
+  },
+  "output": [
+    {
+      "item": "minecraft:glowstone_dust"
+    },
+    {
+      "chance": 0.1,
+      "item": "minecraft:redstone"
+    },
+    {
+      "chance": 0.05,
+      "item": "minecraft:quartz"
+    },
+    {
+      "chance": 0.25,
+      "item": "minecraft:netherrack"
+    },
+    {
+      "chance": 0.15,
+      "item": "minecraft:cobblestone"
+    }
+  ],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 90,
+  "vein_id": "coedeposits:glowstone_vein"
+}

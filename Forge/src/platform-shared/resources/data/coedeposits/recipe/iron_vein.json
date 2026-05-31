@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Iron Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100002,
+    "separation": 8,
+    "spacing": 256
+  },
+  "icon": {
+    "item": "minecraft:raw_iron"
+  },
+  "amountMin": 2.0,
+  "amountMax": 25.0
+}

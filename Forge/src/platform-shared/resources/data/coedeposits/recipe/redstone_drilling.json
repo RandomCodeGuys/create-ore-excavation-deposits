@@ -1,0 +1,31 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {
+    "tag": "createoreexcavation:drills"
+  },
+  "output": [
+    {
+      "item": "minecraft:redstone"
+    },
+    {
+      "chance": 0.08,
+      "item": "minecraft:lapis_lazuli"
+    },
+    {
+      "chance": 0.04,
+      "item": "minecraft:quartz"
+    },
+    {
+      "chance": 0.25,
+      "item": "minecraft:cobblestone"
+    },
+    {
+      "chance": 0.1,
+      "item": "minecraft:granite"
+    }
+  ],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 80,
+  "vein_id": "coedeposits:redstone_vein"
+}

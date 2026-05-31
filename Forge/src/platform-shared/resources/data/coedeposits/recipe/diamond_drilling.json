@@ -1,0 +1,31 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {
+    "tag": "createoreexcavation:drills"
+  },
+  "output": [
+    {
+      "item": "minecraft:diamond"
+    },
+    {
+      "chance": 0.03,
+      "item": "minecraft:emerald"
+    },
+    {
+      "chance": 0.25,
+      "item": "minecraft:coal"
+    },
+    {
+      "chance": 0.35,
+      "item": "minecraft:cobblestone"
+    },
+    {
+      "chance": 0.15,
+      "item": "minecraft:gravel"
+    }
+  ],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 200,
+  "vein_id": "coedeposits:diamond_vein"
+}

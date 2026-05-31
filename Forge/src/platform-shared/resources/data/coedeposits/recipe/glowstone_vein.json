@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Glowstone Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100011,
+    "separation": 8,
+    "spacing": 256
+  },
+  "icon": {
+    "item": "minecraft:glowstone_dust"
+  },
+  "amountMin": 2.0,
+  "amountMax": 20.0
+}

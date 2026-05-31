@@ -1,0 +1,31 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {
+    "tag": "createoreexcavation:drills"
+  },
+  "output": [
+    {
+      "item": "minecraft:quartz"
+    },
+    {
+      "chance": 0.04,
+      "item": "minecraft:amethyst_shard"
+    },
+    {
+      "chance": 0.3,
+      "item": "minecraft:sand"
+    },
+    {
+      "chance": 0.15,
+      "item": "minecraft:cobblestone"
+    },
+    {
+      "chance": 0.1,
+      "item": "minecraft:sandstone"
+    }
+  ],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 100,
+  "vein_id": "coedeposits:quartz_vein"
+}

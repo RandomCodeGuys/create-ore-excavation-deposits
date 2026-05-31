@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Ancient Debris Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100202,
+    "separation": 16,
+    "spacing": 480
+  },
+  "icon": {
+    "item": "minecraft:netherite_scrap"
+  },
+  "amountMin": 0.5,
+  "amountMax": 5.0
+}

@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Nether Gold Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100201,
+    "separation": 10,
+    "spacing": 320
+  },
+  "icon": {
+    "item": "minecraft:raw_gold"
+  },
+  "amountMin": 1.5,
+  "amountMax": 18.0
+}

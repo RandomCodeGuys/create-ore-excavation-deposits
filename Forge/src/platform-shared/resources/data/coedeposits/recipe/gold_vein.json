@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Gold Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100007,
+    "separation": 8,
+    "spacing": 256
+  },
+  "icon": {
+    "item": "minecraft:raw_gold"
+  },
+  "amountMin": 1.0,
+  "amountMax": 15.0
+}

@@ -1,0 +1,139 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'net.minecraftforge.gradle' version '[6.0.24,6.2)'
+}
+
+version = mod_version
+group = mod_group_id
+base { archivesName = mod_id }
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+minecraft {
+    // Official Mojang mappings — always resolvable, no external mappings repo.
+    // (Matches COE's Fabric loom.officialMojangMappings(); param names don't matter
+    // for the port since we write our own.) Parchment can be re-added later for dev.
+    mappings channel: 'official', version: minecraft_version
+
+    // No access transformer yet.
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.console.level', 'debug'
+            args '--nogui'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
+    }
+}
+
+// ── GuiMapMixin refmap (PRODUCTION TODO) ────────────────────────────────────
+// The world-map overlay mixin injects into Xaero's GuiMap.init/render (vanilla
+// Screen overrides). In DEV (runClient, official mappings) this works as-is —
+// no refmap needed. In a PRODUCTION (SRG-named) runtime it needs a refmap, but
+// the Mixin AP can't auto-generate one here: it fails to resolve
+// GuiMap→ScreenBase→Screen across the official↔SRG boundary (Xaero is a mod, not
+// SRG-mapped), erroring "Superclass Screen not found in hierarchy" + "Unable to
+// locate obfuscation mapping for init/render". NeoForge 1.21 sidesteps this
+// (official names at runtime). Finishing the production refmap (MixinGradle +
+// org.spongepowered:mixin:0.8.5:processor, with AP-arg tuning for the Xaero
+// hierarchy) is a runtime-iteration task — left for the test pass.
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+// Loader-agnostic core lives in platform-shared/, compiled into this Forge module
+// and (later) srcDir'd into the Fabric module — mirrors COE's structure. Forge
+// "owns" platform-shared for the 1.20.1 line.
+sourceSets {
+    main {
+        java { srcDir 'src/platform-shared/java' }
+        resources { srcDir 'src/platform-shared/resources' }
+    }
+}
+
+repositories {
+    // Modrinth maven — serves COE, YACL, Xaero's World Map as production jars.
+    // On Forge 1.20.1 these are SRG-mapped, so each mod dep is wrapped in
+    // fg.deobf(...) below to remap it to the official mappings we compile against.
+    // NOTE: a plain maven with `content { includeGroup }` (NOT exclusiveContent) —
+    // fg.deobf produces the remapped `..._mapped_official` artifact in ForgeGradle's
+    // own local repo under the SAME `maven.modrinth` group, and exclusiveContent
+    // would forbid resolving it from anywhere but the remote.
+    maven {
+        name = "Modrinth"
+        url = "https://api.modrinth.com/maven"
+        content { includeGroup "maven.modrinth" }
+    }
+}
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+
+    // COE — the host mod we extend. compileOnly: the player's modpack ships its
+    // own COE (+ Create) jar at runtime; we don't bundle it. mods.toml declares
+    // createoreexcavation as a required dependency.
+    // Modrinth version_id 9mCy0ePP = 1.20.1-1.6.5 (forge) — unambiguous per
+    // loader-version (look up new ids via
+    //   /v2/project/create-ore-excavation/version?game_versions=["1.20.1"]&loaders=["forge"]).
+    compileOnly fg.deobf("maven.modrinth:create-ore-excavation:9mCy0ePP")
+
+    // YACL — optional config-screen library (soft dep + isLoaded guard).
+    // version_id sCWgXDYQ = 3.6.6+1.20.1-forge.
+    compileOnly fg.deobf("maven.modrinth:yacl:sCWgXDYQ")
+
+    // Xaero's World Map — compileOnly for the world-map overlay mixin.
+    // version_id 5mJcHKn6 = forge-1.20.1-1.40.16 (same build as the NeoForge line).
+    compileOnly fg.deobf("maven.modrinth:xaeros-world-map:5mJcHKn6")
+
+    // Create — needed on the COMPILE classpath because COE's own classes reference
+    // Create types (e.g. SmartInventory) in signatures coedeposits touches
+    // (CreateOreExcavation statics, com.tom.createores.Config). compileOnly: the
+    // modpack ships Create at runtime (COE hard-depends on it). version_id 6R069CcK
+    // = 1.20.1-0.5.1.j — the Create line COE 1.20.1 (1.6.5) was built against.
+    compileOnly fg.deobf("maven.modrinth:create:6R069CcK")
+}
+
+tasks.named('processResources', ProcessResources).configure {
+    var props = [
+        minecraft_version      : minecraft_version,
+        minecraft_version_range: minecraft_version_range,
+        forge_version_range    : forge_version_range,
+        loader_version_range   : loader_version_range,
+        mod_id                 : mod_id,
+        mod_name               : mod_name,
+        mod_license            : mod_license,
+        mod_version            : mod_version,
+        mod_authors            : mod_authors,
+        mod_description        : mod_description,
+    ]
+    inputs.properties props
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand props
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+            'Specification-Title'   : mod_id,
+            'Specification-Vendor'  : mod_authors,
+            'Specification-Version' : '1',
+            'Implementation-Title'  : project.name,
+            'Implementation-Version': project.jar.archiveVersion,
+            'Implementation-Vendor' : mod_authors,
+        ])
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}

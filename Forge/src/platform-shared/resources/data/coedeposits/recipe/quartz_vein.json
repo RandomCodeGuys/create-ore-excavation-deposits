@@ -1,0 +1,15 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Quartz Deposit\"}",
+  "priority": 0,
+  "placement": {
+    "salt": 1762100010,
+    "separation": 8,
+    "spacing": 256
+  },
+  "icon": {
+    "item": "minecraft:quartz"
+  },
+  "amountMin": 3.0,
+  "amountMax": 30.0
+}

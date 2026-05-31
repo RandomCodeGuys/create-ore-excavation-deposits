@@ -1,0 +1,31 @@
+{
+  "type": "createoreexcavation:drilling",
+  "drill": {
+    "tag": "createoreexcavation:drills"
+  },
+  "output": [
+    {
+      "item": "minecraft:coal"
+    },
+    {
+      "chance": 0.05,
+      "item": "minecraft:raw_iron"
+    },
+    {
+      "chance": 0.3,
+      "item": "minecraft:cobblestone"
+    },
+    {
+      "chance": 0.2,
+      "item": "minecraft:dirt"
+    },
+    {
+      "chance": 0.1,
+      "item": "minecraft:gravel"
+    }
+  ],
+  "priority": 0,
+  "stress": 256,
+  "ticks": 60,
+  "vein_id": "coedeposits:coal_vein"
+}
