@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.4
+
+### Fixed
+- **Disabling a deposit in the in-game editor no longer erases its content.** Turning a type off used to collapse its `deposits.json` entry to a bare `{"enabled": false}`, so the full definition was lost on the next reload: a custom deposit could not be recovered, and a re-enabled bundled ore was overwritten with an empty shell (weight 0, no recipe) that shadowed and broke the real default. Now:
+  - A **custom** type — or a customised default — is written in full with `enabled: false` appended, so its fields survive a disable → reopen → re-enable round-trip. The loader still drops it from generation (it checks the flag before decoding).
+  - An **unchanged bundled/datapack default** keeps writing the lightweight `{"enabled": false}` switch (no frozen copy); the editor restores its fields from the live default on reload, and re-enabling drops the overlay entry so the datapack default takes back over.
+  - Bundled ores disabled by the 0.1.3 build show their real values again on reopen. A default already corrupted into an empty shell by the old bug is repaired with a single **Remove** in the editor (the live default returns).
+
+## 0.1.3
+
+### Added
+- **In-game deposit editor** (YACL) — a master/detail screen to add and edit deposit types written to `config/coedeposits/deposits.json`, with structured controls (dropdowns, item picker, sliders) instead of hand-edited JSON. Reached from the mod's config screen.
+- **Edit / disable bundled ores** — the 14 bundled defaults are listed in the editor (read from the mod jar, so they appear even in the main menu) and can be tuned or turned off without shipping a datapack.
+- **Datapack `deposit_type` registry + config overlay** — types load from `data/<ns>/deposit_type/*.json` across packs, with `deposits.json` applied last as an override layer.
+- **Overlap resolution** — overlapping deposits of the same type merge; across types the rarer one wins.
+
+### Changed
+- Project renamed to **Create Ore Excavation Deposits**; Xaero's Map dependencies declared; README overhauled.
+
+### Fixed
+- Config-screen number fields parsing under a comma locale; drill-yields tooltip column alignment; overlay inline-vein binding, `deposit_type` scan path, and config validation.
+
 ## 0.1.2
 
 ### Performance

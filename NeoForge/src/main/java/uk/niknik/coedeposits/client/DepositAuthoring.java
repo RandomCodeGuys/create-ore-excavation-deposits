@@ -86,6 +86,10 @@ public final class DepositAuthoring {
         /** Disabled via the editor → persisted as {@code "enabled": false}, which the
          *  loader uses to drop the id from the merged registry entirely. */
         public boolean disabled = false;
+        /** Loaded from a BARE {@code {"enabled": false}} entry that stores no fields.
+         *  {@link #loadMerged} restores the live-default content into such a draft so
+         *  the editor shows the real ore greyed-out. Transient — never encoded. */
+        public boolean bareDisable = false;
         public DepositType.Placement placement = DepositType.Placement.MANAGED;
         public final List<RecipeEntry> veinRecipes = new ArrayList<>();
         public String veinRecipeInfinite = "";
@@ -153,20 +157,29 @@ public final class DepositAuthoring {
                 if (e.getKey().startsWith("_")) continue;
                 ResourceLocation id = ResourceLocation.tryParse(e.getKey());
                 if (id == null) continue;
-                // Disable directive: a bare {"enabled": false} entry can't (and
-                // shouldn't) decode as a full DepositType — surface it as a
-                // disabled draft so the editor shows it greyed-out, not absent.
-                if (isDisableDirective(e.getValue())) {
+                JsonElement val = e.getValue();
+                boolean disabled = hasDisableFlag(val);
+                // A BARE {"enabled": false} (no other fields) carries no type — surface
+                // it as a disabled draft and let loadMerged restore the real fields when
+                // the id is a known default. A FULL type that merely ALSO carries
+                // enabled:false (a disabled custom/customised deposit) is parsed below
+                // with its content intact, so disabling is non-destructive.
+                if (disabled && isBareDirective(val)) {
                     Draft off = new Draft();
                     off.id = id.toString();
                     off.disabled = true;
+                    off.bareDisable = true;
                     drafts.add(off);
                     continue;
                 }
-                DepositType.CODEC.parse(JsonOps.INSTANCE, e.getValue())
+                DepositType.CODEC.parse(JsonOps.INSTANCE, val)
                         .resultOrPartial(err -> Coedeposits.LOGGER.error(
                                 "[coedeposits] editor: failed to load '{}': {}", e.getKey(), err))
-                        .ifPresent(t -> drafts.add(fromType(id, t)));
+                        .ifPresent(t -> {
+                            Draft d = fromType(id, t);
+                            d.disabled = disabled;
+                            drafts.add(d);
+                        });
             }
         } catch (Exception ex) {
             Coedeposits.LOGGER.error("[coedeposits] editor: failed to read {}: {}", f, ex.toString());
@@ -174,11 +187,29 @@ public final class DepositAuthoring {
         return drafts;
     }
 
-    /** True for a config entry that is solely an {@code {"enabled": false}} disable switch. */
-    private static boolean isDisableDirective(JsonElement el) {
+    /** True when the object entry carries an {@code "enabled": false} flag (disabled). */
+    private static boolean hasDisableFlag(JsonElement el) {
         if (!el.isJsonObject()) return false;
         JsonElement en = el.getAsJsonObject().get("enabled");
-        return en != null && en.isJsonPrimitive() && !en.getAsBoolean();
+        return en != null && en.isJsonPrimitive() && en.getAsJsonPrimitive().isBoolean()
+                && !en.getAsBoolean();
+    }
+
+    /**
+     * True when an object is <em>only</em> a disable directive: it has the
+     * {@code enabled} flag and no real type fields (comment keys starting with
+     * {@code _} are ignored). Such an entry stores no content, so the editor
+     * restores the type's fields from the live default in {@link #loadMerged}. A
+     * full type that <em>additionally</em> carries {@code enabled:false} is NOT
+     * bare and keeps its stored content.
+     */
+    private static boolean isBareDirective(JsonElement el) {
+        if (!el.isJsonObject()) return false;
+        for (String k : el.getAsJsonObject().keySet()) {
+            if (k.equals("enabled") || k.startsWith("_")) continue;
+            return false;  // a real content key → not bare
+        }
+        return true;
     }
 
     /**
@@ -193,9 +224,30 @@ public final class DepositAuthoring {
      */
     public static List<Draft> loadMerged() {
         List<Draft> drafts = load();
+        Map<ResourceLocation, DepositType> defaults = defaultTypes();
+
+        // Restore content for bare {"enabled": false} drafts that shadow a known
+        // default: those entries store no fields, so without this the editor shows
+        // the disabled ore empty AND re-enabling writes an empty shadow over the
+        // real default. Pull the live-default fields in, keep it disabled and
+        // fromDefault — re-enabling then diffs equal and drops the overlay entry,
+        // handing the ore back to its datapack source.
+        for (int i = 0; i < drafts.size(); i++) {
+            Draft d = drafts.get(i);
+            if (!d.bareDisable) continue;
+            ResourceLocation rid = ResourceLocation.tryParse(d.id);
+            DepositType def = rid == null ? null : defaults.get(rid);
+            if (def != null) {
+                Draft restored = fromType(rid, def);
+                restored.disabled = true;
+                restored.fromDefault = true;
+                drafts.set(i, restored);
+            }
+        }
+
         java.util.Set<String> have = new java.util.HashSet<>();
         for (Draft d : drafts) have.add(d.id);
-        for (Map.Entry<ResourceLocation, DepositType> e : defaultTypes().entrySet()) {
+        for (Map.Entry<ResourceLocation, DepositType> e : defaults.entrySet()) {
             String id = e.getKey().toString();
             if (have.contains(id)) continue;  // overlay already defines/overrides it
             Draft d = fromType(e.getKey(), e.getValue());
@@ -297,13 +349,34 @@ public final class DepositAuthoring {
                 Coedeposits.LOGGER.error("[coedeposits] editor: skipping entry with invalid id '{}'", d.id);
                 continue;
             }
-            // Disabled (default or custom): write only the {"enabled": false}
-            // directive — the loader drops the id from the registry. Takes
-            // precedence over the full-type encode below.
+            // Disabled — keep it NON-DESTRUCTIVE. An unchanged bundled/datapack
+            // default collapses to a bare {"enabled": false}: that turns it off and
+            // avoids freezing a copy (its fields are restored from the live default
+            // on reload). A custom type — or a default the player has customised — is
+            // written in FULL with enabled:false appended, so disabling never erases
+            // the player's work. Either way the loader drops the id from the registry
+            // (it checks the flag before decoding). Takes precedence over the
+            // full-type encode below.
             if (d.disabled) {
-                JsonObject off = new JsonObject();
-                off.addProperty("enabled", false);
-                root.add(id.toString(), off);
+                JsonElement encoded = DepositType.CODEC.encodeStart(JsonOps.INSTANCE, toType(d))
+                        .resultOrPartial(err -> Coedeposits.LOGGER.error(
+                                "[coedeposits] editor: failed to encode disabled '{}': {}", d.id, err))
+                        .orElse(null);
+                boolean bare = encoded == null || !encoded.isJsonObject();
+                if (!bare && d.fromDefault) {
+                    DepositType def = defaultTypes().get(id);
+                    JsonElement defJson = def == null ? null
+                            : DepositType.CODEC.encodeStart(JsonOps.INSTANCE, def).result().orElse(null);
+                    bare = encoded.equals(defJson);  // unchanged default → bare directive
+                }
+                if (bare) {
+                    JsonObject off = new JsonObject();
+                    off.addProperty("enabled", false);
+                    root.add(id.toString(), off);
+                } else {
+                    encoded.getAsJsonObject().addProperty("enabled", false);
+                    root.add(id.toString(), encoded);
+                }
                 continue;
             }
             JsonElement encoded = DepositType.CODEC.encodeStart(JsonOps.INSTANCE, toType(d))
