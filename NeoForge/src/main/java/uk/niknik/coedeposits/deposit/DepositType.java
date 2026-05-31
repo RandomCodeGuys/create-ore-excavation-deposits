@@ -10,7 +10,9 @@ import net.minecraft.util.ExtraCodecs;
 import net.minecraft.util.StringRepresentable;
 import net.minecraft.world.level.biome.Biome;
 
+import com.mojang.datafixers.util.Pair;
 import com.mojang.serialization.Codec;
+import com.mojang.serialization.MapCodec;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
 
 import uk.niknik.coedeposits.Config;
@@ -75,7 +77,8 @@ public record DepositType(
         Optional<Config.RevealMode> reveal,
         List<ResourceLocation> dimensions,
         Optional<VeinSpec> vein,
-        Optional<DrillingSpec> drilling) {
+        Optional<DrillingSpec> drilling,
+        Optional<ExtractingSpec> extracting) {
 
     /**
      * Convenience: resolve the effective reveal mode for this type by falling
@@ -276,6 +279,42 @@ public record DepositType(
     }
 
     /**
+     * Inline COE fluid-extraction spec — the fluid analogue of {@link DrillingSpec}.
+     * When present, the {@link uk.niknik.coedeposits.pack.BundledRecipePack} virtual
+     * datapack synthesises a {@code createoreexcavation:extracting} recipe bound to
+     * this type's vein. The deposit is placed exactly like a solid one (same vein +
+     * {@code per_chunk_units} budget — COE's Extractor and Drill share the same vein
+     * consumption logic); the player harvests it with COE's <b>Extractor</b> machine
+     * instead of the Drill, getting {@code amount} mB of {@code fluid} per cycle.
+     *
+     * <p>A type may carry {@code drilling} and {@code extracting} both (the vein can
+     * then be drilled for items OR pumped for fluid), but the common case is one or
+     * the other.
+     *
+     * @param fluid     fluid id produced, e.g. {@code minecraft:water} (source fluid)
+     * @param amount    millibuckets yielded per extraction cycle (default 500)
+     * @param ticks     extraction cycle duration in ticks (default 20)
+     * @param stress    Create stress units the extractor consumes (default 256)
+     * @param drillTag  item tag of drill heads allowed
+     *                   (default {@code createoreexcavation:drills})
+     */
+    public record ExtractingSpec(
+            ResourceLocation fluid,
+            int amount,
+            int ticks,
+            int stress,
+            Optional<ResourceLocation> drillTag) {
+
+        public static final Codec<ExtractingSpec> CODEC = RecordCodecBuilder.create(b -> b.group(
+                ResourceLocation.CODEC.fieldOf("fluid").forGetter(ExtractingSpec::fluid),
+                ExtraCodecs.POSITIVE_INT.optionalFieldOf("amount", 500).forGetter(ExtractingSpec::amount),
+                ExtraCodecs.POSITIVE_INT.optionalFieldOf("ticks", 20).forGetter(ExtractingSpec::ticks),
+                ExtraCodecs.POSITIVE_INT.optionalFieldOf("stress", 256).forGetter(ExtractingSpec::stress),
+                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(ExtractingSpec::drillTag)
+        ).apply(b, ExtractingSpec::new));
+    }
+
+    /**
      * Accepts either a single string ({@code "c:is_mountain"}) or an array
      * ({@code ["c:is_mountain", "minecraft:is_taiga"]}) for {@code biome_filter}
      * to keep the JSON readable for both single-biome and multi-biome ores.
@@ -332,6 +371,50 @@ public record DepositType(
     /** Default value for {@code per_chunk_units} on COE-placement entries (unused). */
     private static final PerChunkUnits DEFAULT_PER_CHUNK_UNITS = new PerChunkUnits(0L, Optional.of(0L));
 
+    // ── Codec ────────────────────────────────────────────────────────────────
+    // DataFixerUpper's group(...) maxes out at 16 fields, but this type has 17 JSON
+    // fields. They're split into two flattened MapCodec halves — CORE_CODEC (14) and
+    // INLINE_CODEC (3) — joined with Codec.mapPair, which reads/writes BOTH field
+    // sets from the SAME flat JSON object. The on-disk schema is unchanged; the split
+    // is purely to stay within DFU's arity limit. CORE_CODEC / INLINE_CODEC must be
+    // declared before CODEC (static-init order) or CODEC sees them null.
+
+    /** First 14 fields (recipe pool / placement / budget / filters); see {@link #CODEC}. */
+    private static final MapCodec<CoreFields> CORE_CODEC = RecordCodecBuilder.mapCodec(b -> b.group(
+            // New: weighted recipe array. Optional with empty default so the
+            // legacy single-recipe path below can kick in when this is absent.
+            VEIN_RECIPES_CODEC.optionalFieldOf("vein_recipes", List.of()).forGetter(CoreFields::veinRecipes),
+            // Legacy: single recipe. Folded into veinRecipes by merge() at decode
+            // time; CoreFields.from always encodes it empty so output stays canonical.
+            ResourceLocation.CODEC.optionalFieldOf("vein_recipe").forGetter(CoreFields::legacyVeinRecipe),
+            ResourceLocation.CODEC.optionalFieldOf("vein_recipe_infinite").forGetter(CoreFields::veinRecipeInfinite),
+            // New: filler pool. Empty default means "no filler chunks" (current behaviour).
+            Codec.list(WeightedFiller.CODEC).optionalFieldOf("fillers", List.of()).forGetter(CoreFields::fillers),
+            // New: replenish rate. 0 (default) = disabled, matching pre-0.2 behaviour.
+            Codec.DOUBLE.optionalFieldOf("replenish_rate_per_hour", 0.0).forGetter(CoreFields::replenishRatePerHour),
+            Placement.CODEC.optionalFieldOf("placement", Placement.MANAGED).forGetter(CoreFields::placement),
+            IntRange.CODEC.optionalFieldOf("distance", DEFAULT_DISTANCE).forGetter(CoreFields::distance),
+            IntRange.CODEC.optionalFieldOf("size_chunks", DEFAULT_SIZE_CHUNKS).forGetter(CoreFields::sizeChunks),
+            PerChunkUnits.CODEC.optionalFieldOf("per_chunk_units", DEFAULT_PER_CHUNK_UNITS).forGetter(CoreFields::perChunkUnits),
+            ExtraCodecs.NON_NEGATIVE_INT.optionalFieldOf("weight", 0).forGetter(CoreFields::weight),
+            Codec.INT.optionalFieldOf("map_color").forGetter(CoreFields::mapColor),
+            BIOME_TAGS_CODEC.optionalFieldOf("biome_filter", List.of()).forGetter(CoreFields::biomeFilter),
+            Config.RevealMode.CODEC.optionalFieldOf("reveal").forGetter(CoreFields::reveal),
+            DIMENSIONS_CODEC.optionalFieldOf("dimensions", List.of()).forGetter(CoreFields::dimensions)
+    ).apply(b, CoreFields::new));
+
+    /** Last 3 fields — the inline-synthesis blocks, flattened into the SAME object. */
+    private static final MapCodec<InlineFields> INLINE_CODEC = RecordCodecBuilder.mapCodec(b -> b.group(
+            // When present, the BundledRecipePack virtual datapack synthesises the
+            // corresponding COE recipe (vein → vein, drilling → drilling output items).
+            VeinSpec.CODEC.optionalFieldOf("vein").forGetter(InlineFields::vein),
+            DrillingSpec.CODEC.optionalFieldOf("drilling").forGetter(InlineFields::drilling),
+            // Inline fluid spec → synthesises a createoreexcavation:extracting recipe.
+            // Keyed "fluid" in deposits.json (the user-facing block name); distinct
+            // from COE's own recipe-level "fluid" coolant field (different file).
+            ExtractingSpec.CODEC.optionalFieldOf("fluid").forGetter(InlineFields::extracting)
+    ).apply(b, InlineFields::new));
+
     /**
      * Codec used by {@link DepositTypeLoader} when parsing config JSON.
      *
@@ -347,41 +430,13 @@ public record DepositType(
      * <p>The pre-0.1.2 {@code items} field is silently ignored — replaced by
      * {@code drilling.outputs}.
      */
-    public static final Codec<DepositType> CODEC = RecordCodecBuilder.create(b -> b.group(
-            // New: weighted recipe array. Optional with empty default so the
-            // legacy single-recipe path below can kick in when this is absent.
-            VEIN_RECIPES_CODEC.optionalFieldOf("vein_recipes", List.of()).forGetter(DepositType::veinRecipes),
-            // Legacy: single recipe. Record has no field for it — getter returns
-            // empty so encoding always writes the new format. The merge function
-            // below folds legacy into the veinRecipes list at decode time.
-            ResourceLocation.CODEC.optionalFieldOf("vein_recipe").forGetter(t -> Optional.<ResourceLocation>empty()),
-            ResourceLocation.CODEC.optionalFieldOf("vein_recipe_infinite").forGetter(DepositType::veinRecipeInfinite),
-            // New: filler pool. Empty default means "no filler chunks" (current behaviour).
-            Codec.list(WeightedFiller.CODEC).optionalFieldOf("fillers", List.of()).forGetter(DepositType::fillers),
-            // New: replenish rate. 0 (default) = disabled, matching pre-0.2 behaviour.
-            Codec.DOUBLE.optionalFieldOf("replenish_rate_per_hour", 0.0).forGetter(DepositType::replenishRatePerHour),
-            Placement.CODEC.optionalFieldOf("placement", Placement.MANAGED).forGetter(DepositType::placement),
-            IntRange.CODEC.optionalFieldOf("distance", DEFAULT_DISTANCE).forGetter(DepositType::distance),
-            IntRange.CODEC.optionalFieldOf("size_chunks", DEFAULT_SIZE_CHUNKS).forGetter(DepositType::sizeChunks),
-            PerChunkUnits.CODEC.optionalFieldOf("per_chunk_units", DEFAULT_PER_CHUNK_UNITS).forGetter(DepositType::perChunkUnits),
-            ExtraCodecs.NON_NEGATIVE_INT.optionalFieldOf("weight", 0).forGetter(DepositType::weight),
-            Codec.INT.optionalFieldOf("map_color").forGetter(DepositType::mapColor),
-            BIOME_TAGS_CODEC.optionalFieldOf("biome_filter", List.of()).forGetter(DepositType::biomeFilter),
-            Config.RevealMode.CODEC.optionalFieldOf("reveal").forGetter(DepositType::reveal),
-            DIMENSIONS_CODEC.optionalFieldOf("dimensions", List.of()).forGetter(DepositType::dimensions),
-            // NEW unified-schema blocks: when present, the BundledRecipePack
-            // virtual datapack synthesises the corresponding COE recipe.
-            VeinSpec.CODEC.optionalFieldOf("vein").forGetter(DepositType::vein),
-            DrillingSpec.CODEC.optionalFieldOf("drilling").forGetter(DepositType::drilling)
-    ).apply(b, DepositType::merge));
+    public static final Codec<DepositType> CODEC =
+            Codec.mapPair(CORE_CODEC, INLINE_CODEC).codec().xmap(
+                    p -> merge(p.getFirst(), p.getSecond()),
+                    t -> Pair.of(CoreFields.from(t), InlineFields.from(t)));
 
-    /**
-     * Codec apply target — merges the legacy {@code vein_recipe} field into
-     * the new {@code veinRecipes} list. Called by the codec on every parsed
-     * entry; not public because the record's canonical constructor is the
-     * intended factory for direct callers.
-     */
-    private static DepositType merge(
+    /** Carrier for {@link #CORE_CODEC}'s 14 fields (the codec split's first half). */
+    private record CoreFields(
             List<WeightedRecipe> veinRecipes,
             Optional<ResourceLocation> legacyVeinRecipe,
             Optional<ResourceLocation> veinRecipeInfinite,
@@ -395,26 +450,52 @@ public record DepositType(
             Optional<Integer> mapColor,
             List<TagKey<Biome>> biomeFilter,
             Optional<Config.RevealMode> reveal,
-            List<ResourceLocation> dimensions,
-            Optional<VeinSpec> vein,
-            Optional<DrillingSpec> drilling) {
+            List<ResourceLocation> dimensions) {
 
+        /** Split a built type into core fields for encoding. The legacy field is
+         *  decode-only, so it always encodes empty (canonical form writes vein_recipes). */
+        static CoreFields from(DepositType t) {
+            return new CoreFields(t.veinRecipes(), Optional.empty(), t.veinRecipeInfinite(),
+                    t.fillers(), t.replenishRatePerHour(), t.placement(), t.distance(),
+                    t.sizeChunks(), t.perChunkUnits(), t.weight(), t.mapColor(),
+                    t.biomeFilter(), t.reveal(), t.dimensions());
+        }
+    }
+
+    /** Carrier for {@link #INLINE_CODEC}'s 3 inline-synthesis fields (the second half). */
+    private record InlineFields(
+            Optional<VeinSpec> vein,
+            Optional<DrillingSpec> drilling,
+            Optional<ExtractingSpec> extracting) {
+
+        static InlineFields from(DepositType t) {
+            return new InlineFields(t.vein(), t.drilling(), t.extracting());
+        }
+    }
+
+    /**
+     * Codec apply target — folds the legacy {@code vein_recipe} field into the new
+     * {@code veinRecipes} list and assembles the record from the two codec halves.
+     * Not public because the record's canonical constructor is the intended factory
+     * for direct callers.
+     */
+    private static DepositType merge(CoreFields c, InlineFields i) {
         // Fold legacy → new. Three cases:
         //   1. Only legacy present: synthesize a one-entry list with weight 1.
         //   2. Only new array present (or empty): use as-is.
         //   3. Both present: keep new array, log a warning so admin notices the
         //      duplicate config and removes the legacy field.
-        List<WeightedRecipe> effective = veinRecipes;
-        if (veinRecipes.isEmpty() && legacyVeinRecipe.isPresent()) {
-            effective = List.of(new WeightedRecipe(legacyVeinRecipe.get(), 1));
-        } else if (!veinRecipes.isEmpty() && legacyVeinRecipe.isPresent()) {
+        List<WeightedRecipe> effective = c.veinRecipes();
+        if (c.veinRecipes().isEmpty() && c.legacyVeinRecipe().isPresent()) {
+            effective = List.of(new WeightedRecipe(c.legacyVeinRecipe().get(), 1));
+        } else if (!c.veinRecipes().isEmpty() && c.legacyVeinRecipe().isPresent()) {
             uk.niknik.coedeposits.Coedeposits.LOGGER.warn(
                     "[coedeposits] deposits.json entry has both 'vein_recipe' (legacy) and 'vein_recipes' (new) — " +
                     "using the new array and ignoring the legacy field. Remove 'vein_recipe' to silence this warning.");
         }
-        return new DepositType(effective, veinRecipeInfinite, fillers, replenishRatePerHour,
-                placement, distance, sizeChunks, perChunkUnits, weight, mapColor,
-                biomeFilter, reveal, dimensions, vein, drilling);
+        return new DepositType(effective, c.veinRecipeInfinite(), c.fillers(), c.replenishRatePerHour(),
+                c.placement(), c.distance(), c.sizeChunks(), c.perChunkUnits(), c.weight(), c.mapColor(),
+                c.biomeFilter(), c.reveal(), c.dimensions(), i.vein(), i.drilling(), i.extracting());
     }
 
     /** Inclusive integer interval — used for {@code distance} and {@code size_chunks}. */

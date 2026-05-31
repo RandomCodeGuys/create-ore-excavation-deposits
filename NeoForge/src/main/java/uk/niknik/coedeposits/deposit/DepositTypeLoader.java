@@ -268,7 +268,7 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     private static DepositType withVeinRecipes(DepositType t, List<DepositType.WeightedRecipe> recipes) {
         return new DepositType(recipes, t.veinRecipeInfinite(), t.fillers(), t.replenishRatePerHour(),
                 t.placement(), t.distance(), t.sizeChunks(), t.perChunkUnits(), t.weight(), t.mapColor(),
-                t.biomeFilter(), t.reveal(), t.dimensions(), t.vein(), t.drilling());
+                t.biomeFilter(), t.reveal(), t.dimensions(), t.vein(), t.drilling(), t.extracting());
     }
 
     /** Recompute managed/COE indexes from the live registry. Called from apply(). */

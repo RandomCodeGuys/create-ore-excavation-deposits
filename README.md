@@ -33,12 +33,12 @@ Plus auto-clearing of depleted chunks (no Vein Finder false positives), prospect
 No file editing needed for the common knobs or for authoring ores:
 
 - **Config screen** — Mods → Coedeposits → Config opens a structured screen over every `coedeposits-common.toml` / `coedeposits-client.toml` value. With **YACL** installed it uses a YACL screen; otherwise it cedes to an installed auto-screen mod (Configured/Catalogue) or falls back to NeoForge's native `ConfigurationScreen`. Fine-grained probabilities are edited as whole numbers (e.g. *Core spawn — per 100k chunks*, where 50 = 0.0005/chunk) so small values stay editable and save reliably.
-- **Deposit editor** (requires YACL) — a guided editor that writes `config/coedeposits/deposits.json` through structured controls (item pickers, sliders, dropdowns) for the vein / drilling / placement fields — no hand-editing JSON. Run `/reload` to apply.
-- **Config validation** — on load, `/reload`, and player join the mod checks every deposit type (empty recipe pool, missing or unresolvable vein recipe, no drilling recipe bound, degenerate budget, oversize blobs) and reports issues to the server log and to ops in chat, so silent misconfig surfaces instead of "nothing generates".
+- **Deposit editor** (requires YACL) — a guided editor that writes `config/coedeposits/deposits.json` through structured controls (item pickers, fluid/biome dropdowns, sliders) for the vein / drilling / fluid / placement fields — no hand-editing JSON. Run `/reload` to apply.
+- **Config validation** — on load, `/reload`, and player join the mod checks every deposit type (empty recipe pool, missing or unresolvable vein recipe, no drilling or extracting recipe bound, degenerate budget, oversize blobs) and reports issues to the server log and to ops in chat, so silent misconfig surfaces instead of "nothing generates".
 
 ## Adding custom ores — one file, no datapack required (0.1.2+)
 
-Since 0.1.2 a deposit type can describe its **vein placement** and **drilling output** inline in `config/coedeposits/deposits.json`. The mod's `BundledRecipePack` virtual datapack auto-generates the COE recipes from the inline spec at server start and on every `/reload` — admins no longer need to author a separate datapack with `data/<ns>/recipe/*.json` files for new ores.
+Since 0.1.2 a deposit type can describe its **vein placement**, **drilling output**, and (0.1.4+) **fluid output** inline in `config/coedeposits/deposits.json`. The mod's `BundledRecipePack` virtual datapack auto-generates the COE recipes from the inline spec at server start and on every `/reload` — admins no longer need to author a separate datapack with `data/<ns>/recipe/*.json` files for new ores.
 
 Minimal example: add a new platinum ore that drops alongside cobblestone slag.
 
@@ -73,8 +73,8 @@ Save, run `/reload` — the new ore spawns with a synthetic `mymod:platinum_vein
 ### How it works
 
 1. `BundledRecipePackProvider` registers a virtual server-data pack named `coedeposits-config` via NeoForge's `AddPackFindersEvent`.
-2. On every recipe-manager reload (server start, `/reload`), the pack reads `deposits.json` and emits in-memory JSON for each entry that has an inline `vein:` and/or `drilling:` block.
-3. COE's drilling machine and our picker see these synthesised recipes exactly like bundled or datapack ones — they're indistinguishable at runtime.
+2. On every recipe-manager reload (server start, `/reload`), the pack reads `deposits.json` and emits in-memory JSON for each entry that has an inline `vein:`, `drilling:`, and/or `fluid:` block.
+3. COE's drilling machine, its extractor, and our picker see these synthesised recipes exactly like bundled or datapack ones — they're indistinguishable at runtime.
 4. The virtual pack loads at the TOP position, so any conflicting recipe id in a user datapack or bundled mod jar **wins** over our synthesis.
 
 ### Inline `vein` schema
@@ -101,10 +101,53 @@ Save, run `/reload` — the new ore spawns with a synthetic `mymod:platinum_vein
 | `stress` | int | `256` | Create stress units required |
 | `drill_tag` | item-tag id | `createoreexcavation:drills` | Drill ingredient |
 
+### Inline `fluid` schema (0.1.4+)
+
+A deposit can yield a **fluid** instead of (or alongside) items — harvested with COE's **Extractor** machine rather than the Drill. Add a `fluid:` block; the mod synthesises a `createoreexcavation:extracting` recipe bound to the same vein. The vein placement, distance, biome filter and `per_chunk_units` budget all work exactly as for a solid ore — COE's Extractor and Drill share the same vein-consumption logic — so a fluid deposit is configured the same way, only the output differs.
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `fluid` | fluid id | required | Source fluid produced, e.g. `minecraft:water`, `minecraft:lava` (in the editor, pick the fluid's **bucket** in the same item picker as Icon) |
+| `amount` | int | `500` | Millibuckets yielded per extraction cycle |
+| `ticks` | int | `20` | Extraction cycle duration |
+| `stress` | int | `256` | Create stress units the extractor consumes |
+| `drill_tag` | item-tag id | `createoreexcavation:drills` | Drill-head ingredient the extractor accepts |
+
+When a `fluid:` block is present and the vein has no explicit `icon`, the vein-finder icon defaults to the fluid's bucket (mirroring COE's own water extractor). A deposit may carry **both** `drilling:` and `fluid:` — the vein can then be drilled for items *or* pumped for fluid.
+
+Example — an underground water spring, drilled in swamp biomes:
+
+```json
+"mymod:spring_water": {
+  "vein": {
+    "display_name": "Underground Spring",
+    "amount_multiplier_min": 2.0,
+    "amount_multiplier_max": 25.0
+  },
+  "fluid": {
+    "fluid": "minecraft:water",
+    "amount": 500,
+    "ticks": 20,
+    "stress": 256
+  },
+  "dimensions": "minecraft:overworld",
+  "size_chunks": {"min": 4, "max": 12},
+  "per_chunk_units": {"min": 20000, "max": 120000},
+  "weight": 60,
+  "map_color": 4159204,
+  "biome_filter": ["c:is_swamp"]
+}
+```
+
+(For a modded fluid, pick its bucket in the editor's item picker rather than guessing the id. `minecraft:lava` is the other vanilla source fluid.)
+
+> **Bundled example.** The mod ships a ready `coedeposits:example_water` deposit — a finite "Underground Spring" of `minecraft:water` extracted with COE's Extractor — so the fluid path works the moment you install the mod. It generates in overworld swamp/plains biomes at `weight: 50`; turn it off from the in-game editor (or a `{"enabled": false}` overlay) if you don't want it. Note it ships as plain **datapack** files (`deposit_type/example_water.json` + `recipe/example_water_{vein,extracting}.json`), *not* an inline `fluid:` block — a datapack-supplied type must reference real recipes, since inline synthesis only runs for the config overlay.
+
 ### Recipe id derivation
 
 - **Vein recipe id**: from `vein_recipe` (legacy) or first entry of `vein_recipes`, or auto-derived as `<typeNs>:<typePath>_vein`.
 - **Drilling recipe id**: vein id with trailing `_vein` swapped for `_drilling`, or `_drilling` appended when no `_vein` suffix.
+- **Extracting (fluid) recipe id**: vein id with trailing `_vein` swapped for `_extracting`, or `_extracting` appended when no `_vein` suffix.
 
 Admins who prefer to author recipes externally (e.g. via KubeJS, a hand-crafted datapack, or another mod's bundled recipes) can still use `vein_recipe: "ns:my_external_vein"` and omit the inline blocks. The mod doesn't care which source provided the recipe.
 

@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.5
+
+### Added
+- **Fluid deposits (COE Extractor).** A deposit can now yield a **fluid** instead of (or alongside) items, harvested with Create Ore Excavation's Extractor rather than the Drill. Add an inline `fluid:` block to a `config/coedeposits/deposits.json` entry (`fluid`, `amount` mB/cycle, `ticks`, `stress`, `drill_tag`) and the `BundledRecipePack` synthesises a `createoreexcavation:extracting` recipe bound to the type's vein. Placement, distance, biome filter and the `per_chunk_units` budget all work exactly as for a solid ore — COE's Extractor and Drill share the same vein-consumption logic.
+- **In-game fluid picker.** The editor's Fluid field opens a picker that lists registered **source** fluids by their own texture (tinted sprite) + name, with search and click-to-select — not bucket items. (YACL has no fluid controller, so this is a small dedicated screen.)
+- **Bundled example.** Ships a ready `coedeposits:example_water` deposit — a finite "Underground Spring" of `minecraft:water` extracted with the Extractor — so the fluid path works out of the box. Generates in overworld swamp/plains at `weight: 50`; disable it from the editor (or an `{"enabled": false}` overlay) if unwanted.
+
+### Changed
+- Config validation now counts an `extracting` recipe as making a vein harvestable, so a fluid-only deposit no longer false-warns "can't be mined".
+
+### Internal
+- `DepositType` codec split into two flattened `MapCodec` halves joined with `Codec.mapPair` (DataFixerUpper's `group(...)` caps at 16 fields; the type now has 17). The on-disk JSON schema is unchanged.
+
 ## 0.1.4
 
 ### Fixed

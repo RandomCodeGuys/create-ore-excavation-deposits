@@ -113,6 +113,8 @@ public final class DepositAuthoring {
         public final VeinDraft vein = new VeinDraft();
         public boolean hasDrilling = false;
         public final DrillingDraft drilling = new DrillingDraft();
+        public boolean hasExtracting = false;
+        public final ExtractingDraft extracting = new ExtractingDraft();
     }
 
     /** Inline COE vein spec (synthesised into a recipe by BundledRecipePack). */
@@ -133,6 +135,15 @@ public final class DepositAuthoring {
     public static final class DrillingDraft {
         public final List<OutputEntry> outputs = new ArrayList<>();
         public int ticks = 100;
+        public int stress = 256;
+        public String drillTag = "";
+    }
+
+    /** Inline COE fluid-extraction spec — synthesised into an extracting recipe. */
+    public static final class ExtractingDraft {
+        public String fluid = "minecraft:water";
+        public int amount = 500;
+        public int ticks = 20;
         public int stress = 256;
         public String drillTag = "";
     }
@@ -462,6 +473,14 @@ public final class DepositAuthoring {
             d.drilling.stress = dr.stress();
             d.drilling.drillTag = dr.drillTag().map(ResourceLocation::toString).orElse("");
         });
+        t.extracting().ifPresent(ex -> {
+            d.hasExtracting = true;
+            d.extracting.fluid = ex.fluid().toString();
+            d.extracting.amount = ex.amount();
+            d.extracting.ticks = ex.ticks();
+            d.extracting.stress = ex.stress();
+            d.extracting.drillTag = ex.drillTag().map(ResourceLocation::toString).orElse("");
+        });
         return d;
     }
 
@@ -524,6 +543,20 @@ public final class DepositAuthoring {
             drilling = Optional.of(new DepositType.DrillingSpec(outs, dr.ticks, dr.stress, drillTag));
         }
 
+        Optional<DepositType.ExtractingSpec> extracting = Optional.empty();
+        if (d.hasExtracting) {
+            ExtractingDraft ex = d.extracting;
+            ResourceLocation fluid = ResourceLocation.tryParse(ex.fluid == null ? "" : ex.fluid.trim());
+            // Require a real fluid path — "minecraft:" alone parses but is junk.
+            if (fluid != null && !fluid.getPath().isEmpty()) {
+                Optional<ResourceLocation> exDrillTag = ex.drillTag.isBlank()
+                        ? Optional.empty()
+                        : Optional.ofNullable(ResourceLocation.tryParse(ex.drillTag.trim()));
+                extracting = Optional.of(new DepositType.ExtractingSpec(
+                        fluid, Math.max(1, ex.amount), Math.max(1, ex.ticks), Math.max(1, ex.stress), exDrillTag));
+            }
+        }
+
         return new DepositType(
                 recipes,
                 d.veinRecipeInfinite.isBlank()
@@ -541,6 +574,7 @@ public final class DepositAuthoring {
                 d.overrideReveal ? Optional.of(d.reveal) : Optional.empty(),
                 dimensions,
                 vein,
-                drilling);
+                drilling,
+                extracting);
     }
 }

@@ -395,6 +395,40 @@ public final class DepositEditorScreens {
                                 + "ore plus chance-based slag.",
                         (s) -> Minecraft.getInstance().setScreen(listScreen(s, "Drilling outputs",
                                 d.drilling.outputs, OutputEntry::new, outputRenderer()))))
+                .group(OptionGroup.createBuilder().name(Component.literal("Fluid (extractor — advanced)"))
+                        .option(boolOpt("Enable fluid extraction",
+                                "Make this deposit yield a FLUID, harvested with COE's Extractor instead of the "
+                                        + "Drill. Synthesises a COE extracting recipe bound to this type's vein — set a "
+                                        + "Vein above too (placement). Leave OFF for solid ores; a deposit can also "
+                                        + "have BOTH (drill it for items or pump it for fluid).",
+                                () -> d.hasExtracting, v -> d.hasExtracting = v))
+                        .option(ButtonOption.createBuilder()
+                                .name(Component.literal("Fluid"))
+                                .description(OptionDescription.of(Component.literal(
+                                        "Source fluid produced. Opens a picker that shows fluids by their own "
+                                                + "texture — click one. Vanilla: water, lava, milk.")))
+                                .text(Component.literal(fluidLabel(d.extracting.fluid)))
+                                .action((s, o) -> Minecraft.getInstance().setScreen(new FluidPickerScreen(
+                                        s, d.extracting.fluid, picked -> {
+                                            d.extracting.fluid = picked;
+                                            d.hasExtracting = true;
+                                            persist();
+                                            Minecraft.getInstance().setScreen(detail(d, masterParent));
+                                        })))
+                                .build())
+                        .option(intOpt("Amount (mB / cycle)",
+                                "Millibuckets yielded per extraction cycle. COE's water extractor uses 500.",
+                                () -> d.extracting.amount, v -> d.extracting.amount = v, 1, 1_000_000))
+                        .option(intSlider("Ticks",
+                                "Extraction cycle length in ticks (20 = 1 s). Lower = faster pumping.",
+                                () -> d.extracting.ticks, v -> d.extracting.ticks = v, 1, 1200, 5))
+                        .option(intOpt("Stress",
+                                "Create rotational stress the extractor consumes. COE bundled ≈ 256.",
+                                () -> d.extracting.stress, v -> d.extracting.stress = v, 1, 1_000_000))
+                        .option(str("Drill tag",
+                                "Item tag of drill heads the extractor accepts. Blank = createoreexcavation:drills.",
+                                () -> d.extracting.drillTag, v -> d.extracting.drillTag = v, itemTagIds))
+                        .build())
                 .build();
 
         return YetAnotherConfigLib.createBuilder()
@@ -711,5 +745,13 @@ public final class DepositEditorScreens {
 
     private static String itemToId(Item item) {
         return item == Items.AIR ? "" : BuiltInRegistries.ITEM.getKey(item).toString();
+    }
+
+    /** Friendly label for the Fluid button: the fluid's display name + id, or a prompt when unset. */
+    private static String fluidLabel(String id) {
+        if (id == null || id.isBlank()) return "Pick →";
+        ResourceLocation rl = ResourceLocation.tryParse(id.trim());
+        if (rl == null || !BuiltInRegistries.FLUID.containsKey(rl)) return id;
+        return BuiltInRegistries.FLUID.get(rl).getFluidType().getDescription().getString() + "  §8(" + id + ")";
     }
 }

@@ -1,0 +1,10 @@
+{
+  "type": "createoreexcavation:vein",
+  "name": "{\"text\":\"Underground Spring\"}",
+  "priority": 0,
+  "finite": "always",
+  "amountMultiplierMin": 2.0,
+  "amountMultiplierMax": 25.0,
+  "placement": {"salt": 1834970228, "separation": 8, "spacing": 256},
+  "icon": {"count": 1, "id": "minecraft:water_bucket"}
+}

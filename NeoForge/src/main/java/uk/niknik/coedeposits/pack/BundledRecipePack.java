@@ -19,8 +19,11 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import net.minecraft.SharedConstants;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.minecraft.server.packs.AbstractPackResources;
 import net.minecraft.server.packs.PackLocationInfo;
 import net.minecraft.server.packs.PackType;
@@ -206,6 +209,16 @@ public class BundledRecipePack extends AbstractPackResources {
             ResourceLocation resourceLoc = recipeResourceLocation(drillId);
             out.put(resourceLoc, json.getBytes(StandardCharsets.UTF_8));
         }
+
+        // Inline fluid spec → synthesise extracting (fluid) recipe JSON bound to veinId.
+        if (entry.has("fluid") && entry.get("fluid").isJsonObject()) {
+            String json = synthesizeExtractingRecipe(entry.getAsJsonObject("fluid"), veinId);
+            if (json != null) {
+                ResourceLocation extractId = deriveExtractingId(veinId);
+                ResourceLocation resourceLoc = recipeResourceLocation(extractId);
+                out.put(resourceLoc, json.getBytes(StandardCharsets.UTF_8));
+            }
+        }
     }
 
     /**
@@ -254,6 +267,22 @@ public class BundledRecipePack extends AbstractPackResources {
             path = path.substring(0, path.length() - "_vein".length()) + "_drilling";
         } else {
             path = path + "_drilling";
+        }
+        return ResourceLocation.fromNamespaceAndPath(veinId.getNamespace(), path);
+    }
+
+    /**
+     * Extracting (fluid) recipe id derived from vein id: swap trailing
+     * {@code _vein} for {@code _extracting}, or append {@code _extracting} when no
+     * such suffix. Parallels {@link #deriveDrillingId} so a vein can own both a
+     * drilling and an extracting recipe without their ids colliding.
+     */
+    private static ResourceLocation deriveExtractingId(ResourceLocation veinId) {
+        String path = veinId.getPath();
+        if (path.endsWith("_vein")) {
+            path = path.substring(0, path.length() - "_vein".length()) + "_extracting";
+        } else {
+            path = path + "_extracting";
         }
         return ResourceLocation.fromNamespaceAndPath(veinId.getNamespace(), path);
     }
@@ -323,6 +352,14 @@ public class BundledRecipePack extends AbstractPackResources {
                 }
             }
         }
+        // Fluid deposits with no explicit icon: use the fluid's bucket item — the
+        // same icon COE's own water extractor uses (water → water_bucket).
+        if (iconId == null && entry.has("fluid") && entry.get("fluid").isJsonObject()) {
+            JsonObject fluidSpec = entry.getAsJsonObject("fluid");
+            if (fluidSpec.has("fluid") && fluidSpec.get("fluid").isJsonPrimitive()) {
+                iconId = bucketItemId(fluidSpec.get("fluid").getAsString());
+            }
+        }
         if (iconId == null) iconId = "minecraft:stone";
         icon.addProperty("id", iconId);
         out.add("icon", icon);
@@ -374,5 +411,68 @@ public class BundledRecipePack extends AbstractPackResources {
         out.addProperty("veinId", veinId.toString());
 
         return out.toString();
+    }
+
+    /**
+     * Build a COE {@code extracting} (fluid) recipe JSON — the fluid analogue of
+     * {@link #synthesizeDrillingRecipe}. A single {@code output} FluidStack
+     * ({@code {id, amount}}, amount in mB) replaces the drilling item array; the
+     * deposit is otherwise placed identically and is harvested by COE's Extractor
+     * rather than the Drill. Returns {@code null} (skipping the recipe) when no
+     * {@code fluid} id is set, since an extractor with no output can't be built.
+     */
+    @Nullable
+    private String synthesizeExtractingRecipe(JsonObject fluidSpec, ResourceLocation veinId) {
+        if (!fluidSpec.has("fluid") || !fluidSpec.get("fluid").isJsonPrimitive()) {
+            Coedeposits.LOGGER.warn(
+                    "[coedeposits] inline `fluid` block for vein '{}' has no 'fluid' id — extracting recipe skipped",
+                    veinId);
+            return null;
+        }
+        JsonObject out = new JsonObject();
+        out.addProperty("type", "createoreexcavation:extracting");
+
+        // Drill-head ingredient — the same drills tag the Drilling Machine uses; the
+        // Extractor is a different machine but accepts the same drill heads.
+        JsonObject drill = new JsonObject();
+        String drillTag = fluidSpec.has("drill_tag")
+                ? fluidSpec.get("drill_tag").getAsString()
+                : "createoreexcavation:drills";
+        drill.addProperty("tag", drillTag);
+        out.add("drill", drill);
+
+        // Output — a single FluidStack {id, amount} (COE's FluidStack.CODEC).
+        JsonObject output = new JsonObject();
+        output.addProperty("id", fluidSpec.get("fluid").getAsString());
+        output.addProperty("amount",
+                fluidSpec.has("amount") ? fluidSpec.get("amount").getAsInt() : 500);
+        out.add("output", output);
+
+        out.addProperty("priority", 0);
+        out.addProperty("stress",
+                fluidSpec.has("stress") ? fluidSpec.get("stress").getAsInt() : 256);
+        out.addProperty("ticks",
+                fluidSpec.has("ticks") ? fluidSpec.get("ticks").getAsInt() : 20);
+        out.addProperty("veinId", veinId.toString());
+
+        return out.toString();
+    }
+
+    /**
+     * Resolve a fluid id to its bucket item id for a vein icon, e.g.
+     * {@code minecraft:water → minecraft:water_bucket}. Falls back to
+     * {@code minecraft:bucket} when the fluid is unknown or bucketless. A registry
+     * lookup is safe here — synthesis runs during datapack load, long after
+     * vanilla/mod registries are frozen.
+     */
+    private static String bucketItemId(String fluidId) {
+        ResourceLocation rl = ResourceLocation.tryParse(fluidId == null ? "" : fluidId.trim());
+        if (rl != null) {
+            Item bucket = BuiltInRegistries.FLUID.get(rl).getBucket();
+            if (bucket != Items.AIR) {
+                return BuiltInRegistries.ITEM.getKey(bucket).toString();
+            }
+        }
+        return "minecraft:bucket";
     }
 }

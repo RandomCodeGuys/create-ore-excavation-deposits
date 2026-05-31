@@ -1,11 +1,11 @@
 package uk.niknik.coedeposits.deposit;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -15,6 +15,7 @@ import net.minecraft.world.item.crafting.RecipeType;
 
 import com.tom.createores.CreateOreExcavation;
 import com.tom.createores.recipe.DrillingRecipe;
+import com.tom.createores.recipe.ExtractorRecipe;
 import com.tom.createores.recipe.VeinRecipe;
 
 /**
@@ -121,22 +122,36 @@ public final class DepositConfigValidator {
     public static List<Issue> validateRecipes(Map<ResourceLocation, DepositType> types, RecipeManager recipes) {
         List<Issue> issues = new ArrayList<>();
 
-        // Vein ids that have at least one drilling recipe bound (by veinId).
-        // A vein with none generates but can never be mined. Mirrors COE's own
-        // lookup in ExcavatingBlockEntity. Defensive try/catch: if COE's recipe
-        // API shifts we skip this single check, not the whole validation pass.
-        Set<ResourceLocation> mineable = Set.of();
+        // Vein ids that have at least one drilling OR extracting recipe bound (by
+        // veinId). A vein with neither generates but can never be harvested. A fluid
+        // deposit is harvested by COE's Extractor, so extracting recipes count just
+        // as much as drilling ones — without this every fluid deposit would
+        // false-flag "can't be mined". Mirrors COE's own lookup in
+        // ExcavatingBlockEntity. Defensive try/catch per source: if COE's recipe API
+        // shifts we skip that source, not the whole validation pass.
+        Set<ResourceLocation> harvestable = new HashSet<>();
+        boolean harvestCheckRan = false;
         try {
             RecipeType<DrillingRecipe> drillType = CreateOreExcavation.DRILLING_RECIPES.getRecipeType();
-            mineable = recipes.getAllRecipesFor(drillType).stream()
-                    .map(h -> h.value().veinId)
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toSet());
+            recipes.getAllRecipesFor(drillType).stream()
+                    .map(h -> h.value().veinId).filter(Objects::nonNull)
+                    .forEach(harvestable::add);
+            harvestCheckRan = true;
         } catch (Throwable ignored) {
-            // COE drilling recipe type unavailable/changed — binding check skipped.
+            // COE drilling recipe type unavailable/changed.
         }
-        // Effectively-final snapshot for the lambda below.
-        final Set<ResourceLocation> mineableVeins = mineable;
+        try {
+            RecipeType<ExtractorRecipe> extractType = CreateOreExcavation.EXTRACTING_RECIPES.getRecipeType();
+            recipes.getAllRecipesFor(extractType).stream()
+                    .map(h -> h.value().veinId).filter(Objects::nonNull)
+                    .forEach(harvestable::add);
+            harvestCheckRan = true;
+        } catch (Throwable ignored) {
+            // COE extracting recipe type unavailable/changed.
+        }
+        // Effectively-final snapshots for the lambda below.
+        final Set<ResourceLocation> harvestableVeins = harvestable;
+        final boolean harvestChecked = harvestCheckRan;
 
         for (Map.Entry<ResourceLocation, DepositType> e : types.entrySet()) {
             DepositType t = e.getValue();
@@ -153,17 +168,18 @@ public final class DepositConfigValidator {
                 }
             }
 
-            // (2) the vein needs ≥1 drilling recipe to be mineable — a standalone
-            //     <id>_drilling recipe or a synthesised inline one both count.
-            //     Skipped when mineableVeins is empty (COE check unavailable) so a
+            // (2) the vein needs ≥1 drilling OR extracting recipe to be harvestable —
+            //     a standalone <id>_drilling / <id>_extracting recipe or a synthesised
+            //     inline one all count. Skipped when the COE check couldn't run so a
             //     false negative can't flag every type at once.
-            if (!t.veinRecipes().isEmpty() && !mineableVeins.isEmpty()) {
-                boolean canMine = t.veinRecipes().stream()
-                        .anyMatch(wr -> mineableVeins.contains(wr.recipe()));
-                if (!canMine) {
+            if (!t.veinRecipes().isEmpty() && harvestChecked) {
+                boolean canHarvest = t.veinRecipes().stream()
+                        .anyMatch(wr -> harvestableVeins.contains(wr.recipe()));
+                if (!canHarvest) {
                     issues.add(new Issue(e.getKey(), Severity.WARN,
-                            "no drilling recipe bound to its vein — generates but can't be mined "
-                            + "(add a `drilling` block, or a drilling recipe with veinId pointing at the vein)"));
+                            "no drilling or extracting recipe bound to its vein — generates but can't be "
+                            + "harvested (add a `drilling` or `fluid` block, or a recipe with veinId pointing "
+                            + "at the vein)"));
                 }
             }
         }

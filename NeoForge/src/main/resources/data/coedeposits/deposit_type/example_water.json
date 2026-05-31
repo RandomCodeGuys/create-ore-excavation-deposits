@@ -1,0 +1,22 @@
+{
+  "vein_recipe": "coedeposits:example_water_vein",
+  "dimensions": "minecraft:overworld",
+  "distance": {
+    "min": 0,
+    "max": 2147483647
+  },
+  "size_chunks": {
+    "min": 4,
+    "max": 12
+  },
+  "per_chunk_units": {
+    "min": 20000,
+    "max": 120000
+  },
+  "weight": 50,
+  "map_color": 4159204,
+  "biome_filter": [
+    "c:is_swamp",
+    "c:is_plains"
+  ]
+}
