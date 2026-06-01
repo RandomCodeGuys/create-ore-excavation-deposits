@@ -43,7 +43,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout (full history for branch-ancestry check)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
@@ -66,7 +66,7 @@ jobs:
           fi
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -86,8 +86,11 @@ jobs:
         run: ./gradlew publishMods -Pmod_version=${{ env.RELEASE_VERSION }}
 
       - name: Upload Forge jar to GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ env.RELEASE_TAG }}
           files: Forge/build/libs/coedeposits-${{ env.RELEASE_VERSION }}.jar
           generate_release_notes: true
+          # ALPHA mod (Modrinth type=ALPHA) — flag the GitHub release as a
+          # pre-release too so it isn't surfaced as "Latest" / stable.
+          prerelease: true
