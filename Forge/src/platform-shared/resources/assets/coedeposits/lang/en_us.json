@@ -1,0 +1,20 @@
+{
+  "key.categories.coedeposits": "Coe Deposits",
+  "key.coedeposits.toggle_overlay": "Toggle deposits overlay",
+
+  "coedeposits.map.toggle.button": "Toggle deposits overlay",
+  "coedeposits.map.toggle.tooltip.on": "Deposits overlay: ON",
+  "coedeposits.map.toggle.tooltip.off": "Deposits overlay: OFF",
+
+  "coedeposits.tooltip.location": "Location: %s,%s",
+  "coedeposits.tooltip.stats": "Spans %s chunk(s)",
+  "coedeposits.tooltip.ores": "Ores: %s",
+  "coedeposits.tooltip.drill_yields_header": "Drill yields:",
+  "coedeposits.tooltip.replenishing": "Replenishing: %s/h",
+  "coedeposits.tooltip.chunk_filler": "Tailings — no ore in this chunk",
+  "coedeposits.tooltip.chunk_unknown": "Remaining: unknown (chunk not loaded)",
+  "coedeposits.tooltip.chunk_depleted": "Depleted",
+  "coedeposits.tooltip.chunk_infinite": "Infinite vein",
+  "coedeposits.tooltip.chunk_remaining": "%s / %s remaining",
+  "coedeposits.tooltip.chunk_remaining_named": "%s: %s / %s remaining"
+}

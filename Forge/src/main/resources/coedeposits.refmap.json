@@ -1,0 +1,16 @@
+{
+  "mappings": {
+    "uk/niknik/coedeposits/mixin/GuiMapMixin": {
+      "init": "m_7856_()V",
+      "render": "m_88315_(Lnet/minecraft/client/gui/GuiGraphics;IIF)V"
+    }
+  },
+  "data": {
+    "searge": {
+      "uk/niknik/coedeposits/mixin/GuiMapMixin": {
+        "init": "m_7856_()V",
+        "render": "m_88315_(Lnet/minecraft/client/gui/GuiGraphics;IIF)V"
+      }
+    }
+  }
+}

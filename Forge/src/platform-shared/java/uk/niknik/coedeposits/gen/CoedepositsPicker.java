@@ -214,6 +214,35 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
         }
     }
 
+    /**
+     * Ensure a known deposit chunk's OreData carries the right vein recipe —
+     * WITHOUT going through COE's lazy {@code getData → pick} populate (which
+     * depends on our picker being the installed one; COE nulls it on every
+     * {@link net.minecraftforge.event.TagsUpdatedEvent} and then lazily recreates
+     * a DEFAULT picker that ignores our deposits, leaving chunks with a null recipe
+     * → read back as "depleted"). We write the capability directly instead, so the
+     * result is deterministic regardless of picker state, and mark {@code loaded}
+     * so COE's getData won't later overwrite it.
+     *
+     * <p>Only touches OreData when the stored recipe differs from {@code recipe}
+     * (null/stale/wrong): a matching recipe is left untouched so per-chunk
+     * depletion ({@code extractedAmount}) survives chunk unload/reload. When the
+     * recipe DOES change we reset {@code extractedAmount} — any prior value was
+     * tracked against a different (or absent) vein and is meaningless.
+     */
+    public static void ensureOreData(LevelChunk chunk, ResourceLocation recipe, float amountMul) {
+        OreDataCapability.OreData od =
+                chunk.getCapability(OreDataCapability.ORE_CAP).orElse(null);
+        if (od == null) return;
+        if (!recipe.equals(od.getRecipeId())) {
+            od.setRecipe(recipe);
+            od.setRandomMul(amountMul);
+            od.setExtractedAmount(0);
+            od.setLoaded(true);
+            chunk.setUnsaved(true);
+        }
+    }
+
     /** Recipe lookup — 1.20.1 RecipeManager.byKey returns the Recipe directly (no holder). */
     static VeinRecipe resolveRecipeValue(ServerLevel lvl, ResourceLocation id) {
         return lvl.getRecipeManager().byKey(id)

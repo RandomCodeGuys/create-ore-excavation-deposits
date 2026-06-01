@@ -2,6 +2,7 @@
   "type": "createoreexcavation:vein",
   "name": "{\"text\":\"Nether Gold Deposit\"}",
   "priority": 0,
+  "alwaysFinite": true,
   "placement": {
     "salt": 1762100201,
     "separation": 10,

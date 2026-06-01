@@ -1,15 +1,16 @@
 {
   "type": "createoreexcavation:vein",
-  "name": "{\"text\":\"Diamond Deposit\"}",
+  "name": "{\"text\":\"Emerald Deposit\"}",
   "priority": 0,
+  "alwaysFinite": true,
   "placement": {
-    "salt": 1762100009,
+    "salt": 1762100008,
     "separation": 8,
     "spacing": 256
   },
   "icon": {
-    "item": "minecraft:diamond"
+    "item": "minecraft:emerald"
   },
   "amountMin": 1.0,
-  "amountMax": 5.0
+  "amountMax": 8.0
 }

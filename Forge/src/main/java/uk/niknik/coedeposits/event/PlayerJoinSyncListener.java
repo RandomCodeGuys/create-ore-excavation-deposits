@@ -49,7 +49,10 @@ public final class PlayerJoinSyncListener {
                     lvl, store, sp, store.all().values());
             if (snapshots.isEmpty()) continue;
             visible += snapshots.size();
-            CoedepositsNetwork.sendSync(sp, new DepositSyncPayload(snapshots));
+            // Batched: hundreds of deposits exceed Forge's 1 MiB packet cap in a
+            // single DepositSyncPayload, which on login aborted the join with
+            // "Invalid player data". sendSyncBatched splits it into safe packets.
+            CoedepositsNetwork.sendSyncBatched(sp, snapshots);
         }
 
         if (total > 0 && Config.LOG_LIFECYCLE.get()) {

@@ -256,7 +256,7 @@ public final class CoedepositsCommand {
         VeinRecipe vr = resolveVein(lvl, referenceRecipeId);
         if (vr == null) {
             src.sendFailure(Component.literal(
-                    "vein_recipe " + referenceRecipeId + " not loaded — check data/<ns>/recipe/"));
+                    "vein_recipe " + referenceRecipeId + " not loaded — check data/<ns>/recipes/"));
             return 0;
         }
 

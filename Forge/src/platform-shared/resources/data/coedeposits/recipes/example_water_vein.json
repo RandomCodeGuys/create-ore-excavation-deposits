@@ -1,15 +1,16 @@
 {
   "type": "createoreexcavation:vein",
-  "name": "{\"text\":\"Glowstone Deposit\"}",
+  "name": "{\"text\":\"Underground Spring\"}",
   "priority": 0,
+  "alwaysFinite": true,
   "placement": {
-    "salt": 1762100011,
+    "salt": 1834970228,
     "separation": 8,
     "spacing": 256
   },
   "icon": {
-    "item": "minecraft:glowstone_dust"
+    "item": "minecraft:water_bucket"
   },
   "amountMin": 2.0,
-  "amountMax": 20.0
+  "amountMax": 25.0
 }

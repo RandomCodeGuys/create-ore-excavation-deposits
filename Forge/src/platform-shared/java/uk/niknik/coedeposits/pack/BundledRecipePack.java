@@ -204,9 +204,10 @@ public class BundledRecipePack extends AbstractPackResources {
         return new ResourceLocation(veinId.getNamespace(), path);
     }
 
-    /** Recipe id → pack-resource location ({@code recipe/<path>.json} — 1.20.1 has no {@code recipes/} variance). */
+    /** Recipe id → pack-resource location ({@code recipes/<path>.json} — MC 1.20.1 uses the PLURAL
+     *  {@code recipes/} datapack folder; 1.21 switched to singular {@code recipe/}). */
     private static ResourceLocation recipeResourceLocation(ResourceLocation recipeId) {
-        return new ResourceLocation(recipeId.getNamespace(), "recipe/" + recipeId.getPath() + ".json");
+        return new ResourceLocation(recipeId.getNamespace(), "recipes/" + recipeId.getPath() + ".json");
     }
 
     /** Build a COE 1.20.1 {@code vein} recipe JSON from the inline spec. */
@@ -220,9 +221,14 @@ public class BundledRecipePack extends AbstractPackResources {
                 + displayName.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}");
 
         out.addProperty("priority", 0);
-        // 1.20.1: a vein is finite by default; "neverFinite": true marks an infinite one.
+        // COE veins are INFINITE by default on this stack (createoreexcavation
+        // Config.defaultInfinite=true), so "finite by default" must be made EXPLICIT:
+        // emit "alwaysFinite" for finite veins, not only "neverFinite" for infinite ones.
+        // Without this a DEFAULT vein resolves to infinite → per-chunk unit budget +
+        // depletion/replenish never engage and the map shows "Infinite vein".
         String finite = veinSpec.has("finite") ? veinSpec.get("finite").getAsString() : "always";
         if ("never".equals(finite)) out.addProperty("neverFinite", true);
+        else if ("always".equals(finite)) out.addProperty("alwaysFinite", true);
         out.addProperty("amountMin", veinSpec.has("amount_multiplier_min")
                 ? veinSpec.get("amount_multiplier_min").getAsFloat() : 2.0f);
         out.addProperty("amountMax", veinSpec.has("amount_multiplier_max")

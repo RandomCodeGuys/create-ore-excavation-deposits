@@ -2,6 +2,7 @@
   "type": "createoreexcavation:vein",
   "name": "{\"text\":\"Quartz Deposit\"}",
   "priority": 0,
+  "alwaysFinite": true,
   "placement": {
     "salt": 1762100010,
     "separation": 8,

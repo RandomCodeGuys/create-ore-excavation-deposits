@@ -87,6 +87,41 @@ public final class CoedepositsNetwork {
         CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), payload);
     }
 
+    // Forge SimpleChannel hard-rejects any single payload > 1 MiB
+    // ("Payload may not be larger than 1048576 bytes"). A world with hundreds of
+    // deposits overflows one DepositSyncPayload — and on LOGIN that thrown
+    // exception aborted the join with "Invalid player data". Keep batches well
+    // under the cap (estimate over-counts; threshold leaves ~300 KiB headroom).
+    private static final int MAX_SYNC_PAYLOAD_BYTES = 700 * 1024;
+
+    /** Conservative encoded size of one snapshot — dominated by its 4 per-chunk lists. */
+    private static int estimateSnapshotBytes(DepositSnapshot s) {
+        return 384 + s.packedChunks().size() * 32;
+    }
+
+    /**
+     * Bulk sync to a single player, split into sub-1-MiB {@link DepositSyncPayload}
+     * packets so large worlds don't trip Forge's payload cap. The client merges
+     * batches per-UUID ({@link uk.niknik.coedeposits.client.DepositClientCache#applyUpdate}),
+     * so the split is lossless. Use this for any multi-deposit sync (login / re-sync).
+     */
+    public static void sendSyncBatched(ServerPlayer player, List<DepositSnapshot> snapshots) {
+        if (snapshots.isEmpty()) return;
+        List<DepositSnapshot> batch = new java.util.ArrayList<>();
+        int batchBytes = 0;
+        for (DepositSnapshot s : snapshots) {
+            int sz = estimateSnapshotBytes(s);
+            if (!batch.isEmpty() && batchBytes + sz > MAX_SYNC_PAYLOAD_BYTES) {
+                sendSync(player, new DepositSyncPayload(batch));
+                batch = new java.util.ArrayList<>();
+                batchBytes = 0;
+            }
+            batch.add(s);
+            batchBytes += sz;
+        }
+        if (!batch.isEmpty()) sendSync(player, new DepositSyncPayload(batch));
+    }
+
     /**
      * Tell every online player on the given level that a batch of deposits is
      * gone. Removal is dimension-scoped — only players currently IN the
@@ -126,7 +161,7 @@ public final class CoedepositsNetwork {
             if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
             List<DepositSnapshot> visible = buildVisible(lvl, store, p, deposits);
             if (visible.isEmpty()) continue;
-            CHANNEL.send(PacketDistributor.PLAYER.with(() -> p), new DepositSyncPayload(visible));
+            sendSyncBatched(p, visible);
         }
     }
 

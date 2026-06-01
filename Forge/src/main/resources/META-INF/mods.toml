@@ -37,10 +37,11 @@ ${mod_description}
     ordering="AFTER"
     side="BOTH"
 
-# Create — COE's own hard dependency; declared so load order is deterministic.
+# Create — COE's own hard dependency (COE 1.6.5 requires create [6.0.2,)).
+# Create 6.0 ships for 1.20.1 too (decoupled versioning).
 [[dependencies.${mod_id}]]
     modId="create"
     mandatory=true
-    versionRange="[0.5.1,)"
+    versionRange="[6.0.2,)"
     ordering="AFTER"
     side="BOTH"
