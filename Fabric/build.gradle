@@ -1,0 +1,76 @@
+plugins {
+    id 'fabric-loom' version '1.6-SNAPSHOT'
+    id 'idea'
+}
+
+version = mod_version
+group = maven_group
+base { archivesName = archives_base_name }
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+    withSourcesJar()
+}
+
+repositories {
+    maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+    mavenCentral()
+    // ── Port-dep repos — uncomment with the code-port (mirror COE's Fabric) ──
+    // maven { url = 'https://api.modrinth.com/maven'; content { includeGroup 'maven.modrinth' } } // COE / YACL / Xaero (Fabric)
+    // maven { url = 'https://maven.blamejared.com' }                              // forge-config-api-port
+    // maven { url = 'https://raw.githubusercontent.com/tom5454/maven/main' }      // ChunkStorageFabric
+    // maven { url = 'https://mvn.devos.one/releases/' }                           // Porting Lib
+    // maven { url = 'https://maven.tterrag.com/' }                                // Create-Fabric
+    // maven { url = 'https://www.cursemaven.com'; content { includeGroup 'curse.maven' } } // forge-config-api-port (curse)
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+
+    // ── Fabric 1.20.1 PORT DEPS — uncomment with the code-port (mirror COE's Fabric/build.gradle) ──
+    // night-config powers the Forge Config API Port; ChunkStorage is the OreData access shim.
+    // implementation "com.electronwill.night-config:core:3.6.3"
+    // implementation "com.electronwill.night-config:toml:3.6.3"
+    // modImplementation "curse.maven:forge-config-api-port-fabric-547434:4583000"          // ForgeConfigSpec on Fabric (Config.java / ClientConfig.java)
+    // modImplementation include("com.tom5454.chunkstorage:ChunkStorageFabric-120:1.0.4")   // OreData access on Fabric (no Forge Capabilities)
+    // modImplementation "com.simibubi.create:create-fabric-${minecraft_version}:${create_version}+mc${minecraft_version}"
+    // for (String m in port_lib_modules.split(',')) modApi "io.github.fabricators_of_create.Porting-Lib:$m:$port_lib_version"
+    // modCompileOnly "maven.modrinth:create-ore-excavation:<fabric-1.20.1-version-id>"     // host mod (look up the Fabric 1.20.1 version id)
+    // modImplementation "maven.modrinth:yacl:<fabric-1.20.1-version-id>"                    // in-game editor / config screen
+    // modCompileOnly "maven.modrinth:xaeros-world-map:<fabric-1.20.1-version-id>"           // world-map overlay
+}
+
+// ── Shared loader-agnostic core — ENABLE WITH THE CODE-PORT ──────────────────────────────
+// BLOCKED until the Forge SimpleChannel networking is abstracted behind a *Platform interface:
+// platform-shared/network/* (CoedepositsNetwork + the 3 payloads) uses Forge-only
+// net.minecraftforge.network.* APIs (SimpleChannel / NetworkRegistry / NetworkEvent /
+// PacketDistributor / NetworkDirection) that don't exist on Fabric even with the shims above.
+// Once the networking is moved behind a *Platform indirection (Forge keeps SimpleChannel; Fabric
+// gets a ServerPlayNetworking impl), srcDir the shared core here exactly like COE's Fabric does:
+// sourceSets {
+//     main {
+//         java      { srcDir '../Forge/src/platform-shared/java' }
+//         resources { srcDir '../Forge/src/platform-shared/resources' }
+//     }
+// }
+
+loom {
+    // Loom auto-generates the runClient / runServer tasks. In IntelliJ the Fabric client
+    // appears as the run config "coedeposits-fabric-1.20 [runClient]" — the Fabric counterpart
+    // to Forge's runClient (Forge/build.gradle minecraft { runs { client } }).
+}
+
+processResources {
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand version: project.version
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = 'UTF-8'
+    it.options.release = 17
+}
