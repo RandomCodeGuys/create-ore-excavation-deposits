@@ -254,3 +254,15 @@ publishMods {
         }
     }
 }
+
+// ── CRITICAL: publish MUST ship the reobfuscated jar ────────────────────────
+// `publishMods`/`publishModrinth` depend on `jar` (which ALONE produces a RAW,
+// Mojang-named jar) but NOT on `reobfJar`. The release workflow runs `build`
+// then a SEPARATE `publishMods`, and that second invocation re-runs `jar`
+// un-reobfuscated, overwriting the good jar from `build` → an un-reobf'd jar
+// was uploaded to both Modrinth and GitHub for 0.1.5 and crashed on the SRG
+// runtime: NoSuchMethodError FileToIdConverter.json (the Mojang name). Force
+// reobf to run before any publish task reads tasks.jar.archiveFile.
+tasks.matching { it.name == 'publishMods' || it.name == 'publishModrinth' }.configureEach {
+    dependsOn 'reobfJar'
+}

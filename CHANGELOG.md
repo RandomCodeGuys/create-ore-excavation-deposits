@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.5-1
+
+### Fixed
+- **Crash on load** (`NoSuchMethodError: net.minecraft.resources.FileToIdConverter.json`). The 0.1.5 jar was published **un-reobfuscated**: the release pipeline ran `publishMods` as a separate Gradle invocation, which re-ran the `jar` task without `reobfJar` and uploaded a jar calling Mojang-mapped method names that don't exist at runtime → crash during mod construction on every 1.20.1 instance. The build now forces `reobfJar` before any publish task. No content or behaviour changes versus 0.1.5 — same code, correctly obfuscated.
+
 ## 0.1.5
 
 ### Added
