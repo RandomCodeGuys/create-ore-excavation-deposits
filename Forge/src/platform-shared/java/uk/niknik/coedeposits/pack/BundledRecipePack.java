@@ -25,9 +25,8 @@ import net.minecraft.server.packs.resources.IoSupplier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 
-import net.minecraftforge.fml.loading.FMLPaths;
-
 import uk.niknik.coedeposits.Coedeposits;
+import uk.niknik.coedeposits.platform.CoedepositsPlatform;
 
 /**
  * Virtual datapack that synthesises COE {@code vein} / {@code drilling} /
@@ -116,7 +115,7 @@ public class BundledRecipePack extends AbstractPackResources {
 
     private Map<ResourceLocation, byte[]> generateAll() {
         Map<ResourceLocation, byte[]> out = new HashMap<>();
-        Path file = FMLPaths.CONFIGDIR.get().resolve(DEPOSITS_JSON_PATH);
+        Path file = CoedepositsPlatform.get().configDir().resolve(DEPOSITS_JSON_PATH);
         if (!Files.exists(file)) {
             return out;
         }

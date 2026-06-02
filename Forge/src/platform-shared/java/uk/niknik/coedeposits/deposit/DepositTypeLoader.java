@@ -19,7 +19,6 @@ import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.SimplePreparableReloadListener;
 import net.minecraft.util.profiling.ProfilerFiller;
-import net.minecraftforge.fml.loading.FMLPaths;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
@@ -27,6 +26,7 @@ import com.mojang.serialization.JsonOps;
 
 import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.Config;
+import uk.niknik.coedeposits.platform.CoedepositsPlatform;
 
 /**
  * Loads {@link DepositType} blueprints from the datapack layer
@@ -204,7 +204,7 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
 
     /** Absolute path of {@code config/coedeposits/deposits.json}. */
     private static Path configFilePath() {
-        return FMLPaths.CONFIGDIR.get().resolve(CONFIG_SUBDIR).resolve(CONFIG_FILE);
+        return CoedepositsPlatform.get().configDir().resolve(CONFIG_SUBDIR).resolve(CONFIG_FILE);
     }
 
     /** Direct map view — used by the picker for weighted iteration. Don't mutate. */

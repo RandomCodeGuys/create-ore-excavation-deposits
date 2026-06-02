@@ -232,7 +232,7 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
      */
     public static void ensureOreData(LevelChunk chunk, ResourceLocation recipe, float amountMul) {
         OreDataCapability.OreData od =
-                chunk.getCapability(OreDataCapability.ORE_CAP).orElse(null);
+                uk.niknik.coedeposits.platform.CoedepositsPlatform.get().oreDataNoPopulate(chunk);
         if (od == null) return;
         if (!recipe.equals(od.getRecipeId())) {
             od.setRecipe(recipe);

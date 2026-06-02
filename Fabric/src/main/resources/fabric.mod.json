@@ -3,7 +3,7 @@
     "id": "coedeposits",
     "version": "${version}",
     "name": "Create Ore Excavation Deposits",
-    "description": "Multi-chunk ore (and fluid) deposits add-on for Create Ore Excavation. Fabric 1.20.1 line — skeleton; feature port in progress.",
+    "description": "Multi-chunk ore (and fluid) deposits add-on for Create Ore Excavation. Fabric 1.20.1 line.",
     "authors": [
         "niknik"
     ],
@@ -18,18 +18,27 @@
         ],
         "client": [
             "uk.niknik.coedeposits.client.CoedepositsFabricClient"
+        ],
+        "modmenu": [
+            "uk.niknik.coedeposits.client.CoedepositsModMenu"
         ]
     },
+    "mixins": [
+        "coedeposits.mixins.json"
+    ],
     "depends": {
         "fabricloader": ">=0.15.0",
         "minecraft": "~1.20.1",
         "java": ">=17",
-        "fabric-api": "*"
-    },
-    "suggests": {
+        "fabric-api": "*",
         "createoreexcavation": "*",
         "create": "*",
+        "forgeconfigapiport": "*"
+    },
+    "suggests": {
         "yet_another_config_lib_v3": "*",
-        "xaerominimap": "*"
+        "modmenu": "*",
+        "xaerominimap": "*",
+        "xaeroworldmap": "*"
     }
 }

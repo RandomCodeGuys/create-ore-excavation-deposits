@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.6-SNAPSHOT'
+    id 'fabric-loom' version '1.7-SNAPSHOT'
     id 'idea'
 }
 
@@ -15,13 +15,29 @@ java {
 repositories {
     maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
     mavenCentral()
-    // ── Port-dep repos — uncomment with the code-port (mirror COE's Fabric) ──
-    // maven { url = 'https://api.modrinth.com/maven'; content { includeGroup 'maven.modrinth' } } // COE / YACL / Xaero (Fabric)
-    // maven { url = 'https://maven.blamejared.com' }                              // forge-config-api-port
-    // maven { url = 'https://raw.githubusercontent.com/tom5454/maven/main' }      // ChunkStorageFabric
-    // maven { url = 'https://mvn.devos.one/releases/' }                           // Porting Lib
-    // maven { url = 'https://maven.tterrag.com/' }                                // Create-Fabric
-    // maven { url = 'https://www.cursemaven.com'; content { includeGroup 'curse.maven' } } // forge-config-api-port (curse)
+    // ── Port-dep repos (mirror COE's Fabric/build.gradle on branch 1.20) ──────────
+    maven { url = 'https://api.modrinth.com/maven'; content { includeGroup 'maven.modrinth' } } // COE / YACL / Xaero (Fabric)
+    maven { url = 'https://maven.createmod.net' }                                // Create, Ponder, Flywheel
+    maven { url = 'https://mvn.devos.one/releases/' }                           // Porting Lib (release)
+    maven { url = 'https://mvn.devos.one/snapshots/' }                          // Porting Lib (snapshot)
+    maven { url = 'https://maven.tterrag.com/' }                                // Registrate-fabric
+    maven { url = 'https://maven.terraformersmc.com/' }                         // ModMenu
+    maven { url = 'https://maven.blamejared.com' }                              // forge-config-api-port (fuzs)
+    maven { url = 'https://raw.githubusercontent.com/Fuzss/modresources/main/maven/' } // forge-config-api-port (fuzs mirror)
+    maven { url = 'https://maven.shedaniel.me/' }                               // (Registrate transitive / cloth)
+    maven { url = 'https://maven.architectury.dev/' }                           // Architectury (Registrate-fabric transitive)
+    maven { url = 'https://raw.githubusercontent.com/tom5454/maven/main' }      // ChunkStorageFabric (COE OreData backend)
+    maven {
+        url = 'https://maven.jamieswhiteshirt.com/libs-release'                 // reach-entity-attributes (Porting-Lib transitive)
+        content { includeGroup 'com.jamieswhiteshirt' }
+    }
+    maven { url = 'https://maven.ladysnake.org/releases' }                      // (Porting-Lib transitive: cardinal-components etc.)
+    maven { url = 'https://maven.cafeteria.dev/releases' }                      // (Porting-Lib transitive)
+    maven { url = 'https://modmaven.dev' }                                      // (Create-fabric transitive fallback)
+    maven {
+        url = 'https://www.cursemaven.com'                                      // forge-config-api-port (curse fallback)
+        content { includeGroup 'curse.maven' }
+    }
 }
 
 dependencies {
@@ -30,32 +46,93 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:${loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
 
-    // ── Fabric 1.20.1 PORT DEPS — uncomment with the code-port (mirror COE's Fabric/build.gradle) ──
-    // night-config powers the Forge Config API Port; ChunkStorage is the OreData access shim.
-    // implementation "com.electronwill.night-config:core:3.6.3"
-    // implementation "com.electronwill.night-config:toml:3.6.3"
-    // modImplementation "curse.maven:forge-config-api-port-fabric-547434:4583000"          // ForgeConfigSpec on Fabric (Config.java / ClientConfig.java)
-    // modImplementation include("com.tom5454.chunkstorage:ChunkStorageFabric-120:1.0.4")   // OreData access on Fabric (no Forge Capabilities)
-    // modImplementation "com.simibubi.create:create-fabric-${minecraft_version}:${create_version}+mc${minecraft_version}"
-    // for (String m in port_lib_modules.split(',')) modApi "io.github.fabricators_of_create.Porting-Lib:$m:$port_lib_version"
-    // modCompileOnly "maven.modrinth:create-ore-excavation:<fabric-1.20.1-version-id>"     // host mod (look up the Fabric 1.20.1 version id)
-    // modImplementation "maven.modrinth:yacl:<fabric-1.20.1-version-id>"                    // in-game editor / config screen
-    // modCompileOnly "maven.modrinth:xaeros-world-map:<fabric-1.20.1-version-id>"           // world-map overlay
+    // ── Forge Config API Port (Fabric) — provides net.minecraftforge.common.ForgeConfigSpec ──
+    // Config.java / ClientConfig.java compile against ForgeConfigSpec verbatim; this dep makes
+    // that API exist on Fabric. night-config is its TOML backend (COE lists it explicitly too).
+    implementation "com.electronwill.night-config:core:3.6.3"
+    implementation "com.electronwill.night-config:toml:3.6.3"
+    modImplementation "curse.maven:forge-config-api-port-fabric-547434:${forge_config_api_port_file}"
+
+    // ── Create 6.0 stack (Fabric) — COE 1.6.x requires create [6.0,) ─────────────
+    modImplementation("com.simibubi.create:create-fabric:${create_version}") {
+        exclude(group: 'net.fabricmc.fabric')
+    }
+    for (String m in port_lib_modules.split(',')) {
+        modApi "io.github.fabricators_of_create.Porting-Lib:$m:$port_lib_version"
+    }
+    modImplementation("dev.engine-room.flywheel:flywheel-fabric-${flywheel_minecraft_version}:${flywheel_version}") {
+        exclude(group: 'net.fabricmc.fabric')
+    }
+    modImplementation("net.createmod.ponder:Ponder-Fabric-1.20.1:${ponder_version}") {
+        exclude(group: 'net.fabricmc.fabric')
+    }
+    // Registrate (Fabric) — Create's registration lib; pulled in by Create at runtime.
+    modImplementation("com.tterrag.registrate_fabric:Registrate:1.3.62-MC1.20.1") {
+        exclude(group: 'io.github.fabricators_of_create') // avoid duplicate Porting Lib
+        exclude(group: 'net.fabricmc')
+    }
+    // Architectury — Registrate-fabric transitive at runtime.
+    modImplementation("dev.architectury:architectury-fabric:9.1.12")
+
+    // ── coedeposits' own integration / soft deps ─────────────────────────────────
+    // COE (host mod): compile against its API + run with it in dev, but never bundle it.
+    modCompileOnly "maven.modrinth:create-ore-excavation:${coe_version}"
+    modLocalRuntime "maven.modrinth:create-ore-excavation:${coe_version}"
+    // ChunkStorage — COE Fabric's OreData backend (OreDataCapability.OreData implements
+    // com.tom.chunkstorage.api.DataObject). Needed on the COMPILE classpath so javac can
+    // type-check our OreData reads/writes; COE pulls it at runtime, so compile-only here.
+    modCompileOnly("com.tom5454.chunkstorage:ChunkStorageFabric-120:1.0.4") {
+        exclude(group: 'net.fabricmc.fabric-loader')
+    }
+    // YACL — the in-game config screen + deposit editor (reached via ModMenu on Fabric).
+    modImplementation "maven.modrinth:yacl:${yacl_version}"
+    // ModMenu — entrypoint that surfaces the YACL config screen.
+    modImplementation("com.terraformersmc:modmenu:${modmenu_version}") {
+        exclude(group: 'net.fabricmc.fabric-api')
+    }
+    // Xaero's World Map — the GuiMapMixin overlay target (closed-source; compile-only).
+    modCompileOnly "maven.modrinth:xaeros-world-map:${xaero_world_map_version}"
+
+    // findbugs jsr305 — @Nullable used by platform-shared/pack/BundledRecipePack.java.
+    compileOnly "com.google.code.findbugs:jsr305:3.0.2"
 }
 
-// ── Shared loader-agnostic core — ENABLE WITH THE CODE-PORT ──────────────────────────────
-// BLOCKED until the Forge SimpleChannel networking is abstracted behind a *Platform interface:
-// platform-shared/network/* (CoedepositsNetwork + the 3 payloads) uses Forge-only
-// net.minecraftforge.network.* APIs (SimpleChannel / NetworkRegistry / NetworkEvent /
-// PacketDistributor / NetworkDirection) that don't exist on Fabric even with the shims above.
-// Once the networking is moved behind a *Platform indirection (Forge keeps SimpleChannel; Fabric
-// gets a ServerPlayNetworking impl), srcDir the shared core here exactly like COE's Fabric does:
-// sourceSets {
-//     main {
-//         java      { srcDir '../Forge/src/platform-shared/java' }
-//         resources { srcDir '../Forge/src/platform-shared/resources' }
-//     }
-// }
+// ── Shared loader-agnostic core (mirrors COE's Fabric srcDir of ../Forge/src/platform-shared) ──
+// The PLATFORM-SHARED network/** is excluded: those classes use Forge
+// SimpleChannel/NetworkEvent APIs that don't exist on Fabric. The Fabric module
+// supplies its own uk.niknik.coedeposits.network.* (same package + same public
+// signatures the callers use) under src/main/java; the wire-only DepositSnapshot
+// is re-provided there too (it has no Forge refs).
+//
+// NOTE: a plain `java { exclude '**/network/**' }` would also drop the Fabric
+// module's OWN network package (the exclude pattern is matched against every
+// source root). So instead we exclude on compileJava by ABSOLUTE path — only
+// files under ../Forge/src/platform-shared/.../network/ are removed, leaving the
+// Fabric network classes intact.
+sourceSets {
+    main {
+        java {
+            srcDir '../Forge/src/platform-shared/java'
+        }
+        resources {
+            srcDir '../Forge/src/platform-shared/resources'
+        }
+    }
+}
+
+def sharedNetworkDir = file('../Forge/src/platform-shared/java/uk/niknik/coedeposits/network').canonicalFile
+def excludeSharedNetwork = { fte -> fte.file.canonicalFile.toPath().startsWith(sharedNetworkDir.toPath()) }
+tasks.named('compileJava').configure {
+    exclude excludeSharedNetwork
+}
+// withSourcesJar() collects from BOTH source roots, so the platform-shared
+// network/*.java collide with the Fabric module's own copies. Drop the shared
+// (Forge-only) network sources from the sources jar to avoid the duplicate, and
+// belt-and-braces set a duplicates strategy in case ordering ever changes.
+tasks.named('sourcesJar').configure {
+    exclude excludeSharedNetwork
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
 
 loom {
     // Loom auto-generates the runClient / runServer tasks. In IntelliJ the Fabric client

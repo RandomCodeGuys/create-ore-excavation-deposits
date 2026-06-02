@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "uk.niknik.coedeposits.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "GuiMapMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
