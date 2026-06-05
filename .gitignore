@@ -38,3 +38,12 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+
+### Sibling loader dirs from the 1.20.1 branch (this is the NeoForge / main line) ###
+# Forge/ and Fabric/ belong to the 1.20.1 branch. On main they only linger as
+# empty / ignored shells after a `git switch` (git never deletes a directory or
+# ignored files), so deleting them by hand never sticks across a round-trip.
+# Ignore them outright here so git never tracks or surfaces anything under them.
+# Branch-local: the 1.20.1 .gitignore is untouched, where they are real source.
+/Forge/
+/Fabric/
