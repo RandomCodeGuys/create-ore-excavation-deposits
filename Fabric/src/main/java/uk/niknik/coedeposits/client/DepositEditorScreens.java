@@ -34,7 +34,6 @@ import dev.isxander.yacl3.api.controller.EnumDropdownControllerBuilder;
 import dev.isxander.yacl3.api.controller.FloatSliderControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerSliderControllerBuilder;
-import dev.isxander.yacl3.api.controller.ItemControllerBuilder;
 import dev.isxander.yacl3.api.controller.LongFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.StringControllerBuilder;
 
@@ -692,13 +691,25 @@ public final class DepositEditorScreens {
                 .build();
     }
 
-    private static Option<Item> itemOpt(String name, String desc, Supplier<String> g, Consumer<String> s) {
-        return Option.<Item>createBuilder()
+    /**
+     * Item field — a button that opens {@link ItemPickerScreen} instead of YACL's
+     * {@code ItemController}. The latter renders ALL items eagerly in its dropdown
+     * and crashes when a mod item's renderer assumes an in-world player (e.g.
+     * Create's {@code handheld_worldshaper} → {@code player.getMainArm()} NPE) while
+     * the config is open from the main menu. {@link ItemPickerScreen} draws icons
+     * only when a player exists, so it's main-menu-safe.
+     */
+    private static Option<?> itemOpt(String name, String desc, Supplier<String> g, Consumer<String> s) {
+        return ButtonOption.createBuilder()
                 .name(Component.literal(name))
                 .description(OptionDescription.of(Component.literal(desc)))
-                .binding(itemFromId(g.get()), () -> itemFromId(g.get()), item -> s.accept(itemToId(item)))
-                .addListener(apply(item -> s.accept(itemToId(item))))
-                .controller(ItemControllerBuilder::create)
+                .text(Component.literal(itemLabel(g.get())))
+                .action((screen, opt) -> Minecraft.getInstance().setScreen(new ItemPickerScreen(
+                        screen, g.get(), picked -> {
+                            s.accept(picked);
+                            persist();
+                            Minecraft.getInstance().setScreen(screen);
+                        })))
                 .build();
     }
 
@@ -735,6 +746,14 @@ public final class DepositEditorScreens {
                 .controller(opt -> IntegerFieldControllerBuilder.create(opt).min(1).max(100_000))
                 .initial(1)
                 .build();
+    }
+
+    /** Button label for the current item id: "Iron Ingot  §8minecraft:iron_ingot", or "(none)". */
+    private static String itemLabel(String id) {
+        if (id == null || id.isBlank()) return "(none)";
+        Item it = itemFromId(id);
+        if (it == Items.AIR) return id + "  §c(unknown)";
+        return it.getDescription().getString() + "  §8" + id;
     }
 
     private static Item itemFromId(String id) {

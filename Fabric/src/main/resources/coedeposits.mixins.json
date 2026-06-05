@@ -2,9 +2,11 @@
   "required": true,
   "minVersion": "0.8.5",
   "package": "uk.niknik.coedeposits.mixin",
+  "plugin": "uk.niknik.coedeposits.mixin.CoedepositsMixinPlugin",
   "compatibilityLevel": "JAVA_17",
   "client": [
-    "GuiMapMixin"
+    "ScreenInvoker",
+    "GuiMapAccessor"
   ],
   "injectors": {
     "defaultRequire": 0

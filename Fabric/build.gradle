@@ -22,6 +22,7 @@ repositories {
     maven { url = 'https://mvn.devos.one/snapshots/' }                          // Porting Lib (snapshot)
     maven { url = 'https://maven.tterrag.com/' }                                // Registrate-fabric
     maven { url = 'https://maven.terraformersmc.com/' }                         // ModMenu
+    maven { url = 'https://maven.quiltmc.org/repository/release/' }             // quilt-parsers (YACL's JiJ config dep, supplied to dev)
     maven { url = 'https://maven.blamejared.com' }                              // forge-config-api-port (fuzs)
     maven { url = 'https://raw.githubusercontent.com/Fuzss/modresources/main/maven/' } // forge-config-api-port (fuzs mirror)
     maven { url = 'https://maven.shedaniel.me/' }                               // (Registrate transitive / cloth)
@@ -79,18 +80,48 @@ dependencies {
     modCompileOnly "maven.modrinth:create-ore-excavation:${coe_version}"
     modLocalRuntime "maven.modrinth:create-ore-excavation:${coe_version}"
     // ChunkStorage — COE Fabric's OreData backend (OreDataCapability.OreData implements
-    // com.tom.chunkstorage.api.DataObject). Needed on the COMPILE classpath so javac can
-    // type-check our OreData reads/writes; COE pulls it at runtime, so compile-only here.
+    // com.tom.chunkstorage.api.DataObject). On the COMPILE classpath so javac can
+    // type-check our OreData reads/writes.
     modCompileOnly("com.tom5454.chunkstorage:ChunkStorageFabric-120:1.0.4") {
         exclude(group: 'net.fabricmc.fabric-loader')
     }
-    // YACL — the in-game config screen + deposit editor (reached via ModMenu on Fabric).
+    // ...and at DEV RUNTIME too. COE itself is modLocalRuntime (above), but the Modrinth
+    // COE artifact ships no POM to pull ChunkStorage transitively, so runClient/runServer
+    // crash in COE's OreDataCapability.<clinit> with
+    // NoClassDefFoundError com/tom/chunkstorage/api/DataObject before our mod even loads.
+    // Dev-only — never compiled in or shipped; prod users get ChunkStorage through COE's
+    // own dependency chain / jar-in-jar.
+    modLocalRuntime("com.tom5454.chunkstorage:ChunkStorageFabric-120:1.0.4") {
+        exclude(group: 'net.fabricmc.fabric-loader')
+    }
+    // YACL — the in-game config screen + deposit editor (reached via ModMenu).
+    // OPTIONAL (fabric.mod.json "suggests"), but kept in the DEV runtime so the config
+    // menu is testable in runClient.
     modImplementation "maven.modrinth:yacl:${yacl_version}"
-    // ModMenu — entrypoint that surfaces the YACL config screen.
+    // ModMenu — surfaces the YACL config screen (CoedepositsModMenu).
     modImplementation("com.terraformersmc:modmenu:${modmenu_version}") {
         exclude(group: 'net.fabricmc.fabric-api')
     }
-    // Xaero's World Map — the GuiMapMixin overlay target (closed-source; compile-only).
+    // YACL JiJ-bundles org.quiltmc.parsers (gson + json) for its config (de)serializer,
+    // and Loom doesn't unpack a dependency mod's nested JiJ in dev — so YACL's own client
+    // entrypoint otherwise crashes runClient with
+    // NoClassDefFoundError org/quiltmc/parsers/json/gson/GsonWriter. Supply the exact
+    // version (0.2.1) YACL bundles to the dev runtime. Dev-only — not bundled/shipped
+    // (prod users get it via YACL's own JiJ). The imageio/TwelveMonkeys jars YACL also
+    // bundles are lazy (image widgets only — the deposit editor has none).
+    runtimeOnly "org.quiltmc.parsers:gson:0.2.1"
+    runtimeOnly "org.quiltmc.parsers:json:0.2.1"
+    // Xaero's World Map — the world-map overlay target (closed-source, OPTIONAL:
+    // fabric.mod.json lists it under "suggests"). COMPILE classpath only, for the
+    // GuiMapAccessor @Accessor + the ScreenEvents GuiMap reference.
+    //
+    // Deliberately NOT modLocalRuntime: World Map JiJ-bundles its own required
+    // `xaerolib` (META-INF/jars/xaerolib-fabric-1.20.1-1.1.15.jar) and Loom does NOT
+    // load a dependency mod's nested JiJ jars in the dev runtime, so adding World Map
+    // to runClient crashes with "requires xaerolib, which is missing" (Modrinth has
+    // no standalone Fabric xaerolib — it's CurseForge/JiJ-only). In PROD the Fabric
+    // loader extracts the JiJ automatically, so a normal Xaero install just works.
+    // → Test the overlay in a real Fabric instance; runClient covers the core.
     modCompileOnly "maven.modrinth:xaeros-world-map:${xaero_world_map_version}"
 
     // findbugs jsr305 — @Nullable used by platform-shared/pack/BundledRecipePack.java.

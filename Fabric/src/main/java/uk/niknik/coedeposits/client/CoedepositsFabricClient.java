@@ -9,6 +9,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
+import net.fabricmc.loader.api.FabricLoader;
 
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
@@ -65,6 +66,16 @@ public final class CoedepositsFabricClient implements ClientModInitializer {
 
         // ── Toggle keybind ──────────────────────────────────────────────────
         KeyBindingHelper.registerKeyBinding(TOGGLE_OVERLAY);
+
+        // ── Xaero World Map overlay + toggle button (OPTIONAL dep) ──────────
+        // Xaero is under fabric.mod.json "suggests". Register the overlay ONLY when
+        // it's actually loaded — the GuiMap-referencing code lives in
+        // XaeroWorldMapOverlay, so without Xaero the JVM never resolves
+        // xaero.map.gui.GuiMap and never crashes (the GuiMapAccessor mixin is gated
+        // the same way by CoedepositsMixinPlugin).
+        if (FabricLoader.getInstance().isModLoaded("xaeroworldmap")) {
+            XaeroWorldMapOverlay.register();
+        }
 
         // ── Per-tick keybind poll (flip overlay + actionbar feedback) ───────
         ClientTickEvents.END_CLIENT_TICK.register(CoedepositsFabricClient::onClientTick);
