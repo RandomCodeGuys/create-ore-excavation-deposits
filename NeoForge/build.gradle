@@ -154,14 +154,25 @@ dependencies {
 
     // localRuntime: same jar feeds runClient/runServer dev-runs so the mod
     // can actually load (we declared createoreexcavation as required in
-    // mods.toml). Modrinth's deobf jar is fully self-contained for runtime,
-    // but Create/Flywheel/Ponder/Registrate still need to be in ./run/mods/.
+    // mods.toml).
     localRuntime "maven.modrinth:create-ore-excavation:tivxiPTo"
 
-    // Xaero's World Map — compileOnly for mixin into xaero.map.gui.GuiMap. Runtime
-    // jar is already in ./run/mods/. Modrinth maven coord follows the pattern
-    // <version>_<loader>_<mc> (matching our server: 1.40.16 / NeoForge / 1.21).
+    // Create itself (COE's required host) — pulled into the dev run via localRuntime
+    // instead of hand-copying it (and its libs) into ./run/mods/ from a modpack.
+    // (The .rar the comment below points at is a 1.20.1 pack — wrong MC, unusable here.)
+    // version_id UjX6dr61 = Create 6.0.10+mc1.21.1 (neoforge). Create JiJ-bundles
+    // Flywheel/Ponder/Registrate; if NeoForge's dev run does NOT load those nested
+    // jars, add them as their own localRuntime lines (maven.modrinth:flywheel / :ponder
+    // and Registrate from the tterrag maven).
+    localRuntime "maven.modrinth:create:UjX6dr61"
+
+    // Xaero's World Map — compileOnly for the mixin into xaero.map.gui.GuiMap, plus
+    // localRuntime so runClient loads it and the deposit map overlay can be exercised in
+    // dev (NeoForge's dev loader extracts the World Map's JiJ'd libs, unlike Fabric/Loom —
+    // so no need to hand-drop the jar into ./run/mods/ any more). Modrinth coord pattern
+    // <version>_<loader>_<mc> (matches our server: 1.40.16 / NeoForge / 1.21).
     compileOnly "maven.modrinth:xaeros-world-map:neoforge-1.21.1-1.40.16"
+    localRuntime "maven.modrinth:xaeros-world-map:neoforge-1.21.1-1.40.16"
 
     // YACL (Yet Another Config Lib) — OPTIONAL config-screen library. compileOnly
     // so the YaclConfigScreen bridge compiles against its API; the mod
@@ -205,6 +216,7 @@ dependencies {
     localRuntime "maven.modrinth:create-steam-n-rails-1.21.1:oQKsMKfj"
     localRuntime "maven.modrinth:architectury-api:ZxYGwlk0"
     localRuntime "maven.modrinth:spark:v5qtqRQi"
+    localRuntime "maven.modrinth:cubes-without-borders:epixUL1j"   // Cubes Without Borders 3.0.0+1.21 — requested dev/test mod (1 optional dep, skipped)
 }
 
 // FTB mods (Chunks/Library/Teams) are CurseForge-only — Modrinth has none of

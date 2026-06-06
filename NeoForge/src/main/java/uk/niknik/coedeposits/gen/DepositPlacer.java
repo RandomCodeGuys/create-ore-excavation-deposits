@@ -124,6 +124,7 @@ public final class DepositPlacer {
      * @param finiteBase   COE global {@code Config.finiteAmountBase} (default 1000)
      * @return             {@code randomMul} to write into {@code OreData}
      */
+
     /**
      * Per-chunk deterministic weighted pick from a type's combined
      * {@code recipes + fillers} pool. Returns the chosen vein recipe id, or

@@ -51,7 +51,7 @@ public class CoedepositsClient {
     /**
      * Pick which config screen to register, in priority order:
      * <ol>
-     *   <li>YACL present → our {@link uk.niknik.coedeposits.client.YaclConfigScreen}
+     *   <li>YACL present → our {@link uk.niknik.coedeposits.client.config.CoedepositsConfigScreen}
      *       (also the primary screen on the planned Fabric port).</li>
      *   <li>An {@link #AUTO_SCREEN_PROVIDERS auto-screen provider} present →
      *       register nothing and let it generate the screen from our specs.</li>
@@ -60,12 +60,12 @@ public class CoedepositsClient {
      */
     private static void registerConfigScreen(ModContainer container) {
         if (ModList.get().isLoaded(YACL_MODID)) {
-            // Guarded so YaclConfigScreen (which imports the YACL API) is only
+            // Guarded so CoedepositsConfigScreen (which imports the YACL API) is only
             // ever class-loaded when YACL is actually present. First lambda
             // param (Minecraft or ModContainer depending on NeoForge version)
             // is unused, so the lambda fits the IConfigScreenFactory SAM either way.
             container.registerExtensionPoint(IConfigScreenFactory.class,
-                    (ignored, parent) -> uk.niknik.coedeposits.client.YaclConfigScreen.create(parent));
+                    (ignored, parent) -> uk.niknik.coedeposits.client.config.CoedepositsConfigScreen.create(parent));
             Coedeposits.LOGGER.info("[coedeposits] YACL present — using the YACL config screen");
             return;
         }

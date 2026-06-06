@@ -27,7 +27,7 @@ import net.neoforged.neoforge.client.extensions.common.IClientFluidTypeExtension
  * this is a small vanilla {@link Screen} with an {@link ObjectSelectionList} that
  * blits each fluid's still-texture from the block atlas (tinted, e.g. water's blue).
  * Selecting an entry calls {@code onPick} with the fluid id; cancelling returns to
- * {@code parent}. Used by {@link DepositEditorScreens} for the inline {@code fluid:}
+ * {@code parent}. Used by {@link uk.niknik.coedeposits.client.config.deposit.InlineTab} for the inline {@code fluid:}
  * block's fluid field.
  */
 public final class FluidPickerScreen extends Screen {
