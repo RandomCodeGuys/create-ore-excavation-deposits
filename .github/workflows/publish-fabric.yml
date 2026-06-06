@@ -1,0 +1,88 @@
+name: Publish Fabric 1.20.1 to Modrinth
+
+# Tag-driven release for the 1.20.1 line, Fabric loader. Sibling of publish.yml
+# (which ships the Forge/ subproject on this branch). Kept separate so the Fabric
+# port can release independently of Forge — they share the Modrinth project but use
+# distinct version numbers (Forge "1.20.1-X.Y.Z", Fabric "1.20.1-X.Y.Z-fabric").
+#
+# Trigger conditions:
+#   1. Tag matches `1.20.1-fabric-vX.Y.Z` — MC- AND loader-prefixed, so it never
+#      collides with Forge's `1.20.1-vX.Y.Z` or main/NeoForge's bare `vX.Y.Z`.
+#   2. Tag's commit is reachable from the 1.20.1 branch (enforced below).
+#   3. Repo is the canonical RandomCodeGuys/create-ore-excavation-deposits — forks
+#      can't trigger publish even if they push a matching tag.
+#
+# Fabric 1.20.1 builds on JDK 17 (Loom), same as the Forge 1.20.1 line.
+#
+# Manual trigger via workflow_dispatch re-runs publication for an existing tag.
+on:
+  push:
+    tags:
+      - '1.20.1-fabric-v[0-9]+.[0-9]+.[0-9]+'
+      - '1.20.1-fabric-v[0-9]+.[0-9]+.[0-9]+-[0-9]+'   # hotfix suffix
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to publish (e.g. 1.20.1-fabric-v0.1.6)"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    if: github.repository == 'RandomCodeGuys/create-ore-excavation-deposits'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout (full history for branch-ancestry check)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve tag + version
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "RELEASE_TAG=${TAG}" >> $GITHUB_ENV
+          # Strip everything up to the last "v" → bare mod version
+          # (1.20.1-fabric-v0.1.6 → 0.1.6).
+          echo "RELEASE_VERSION=${TAG##*v}" >> $GITHUB_ENV
+
+      - name: Verify tag is on the 1.20.1 branch
+        run: |
+          git fetch origin 1.20.1 --depth=1000
+          TAG_SHA=$(git rev-parse "${RELEASE_TAG}")
+          if ! git merge-base --is-ancestor "${TAG_SHA}" origin/1.20.1; then
+            echo "::error::Tag ${RELEASE_TAG} (${TAG_SHA}) is not reachable from the 1.20.1 branch."
+            echo "::error::Tags for the Fabric 1.20.1 line must point at commits on 1.20.1. Refusing to publish."
+            exit 1
+          fi
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # --- Fabric subproject -------------------------------------------------
+      - name: Make Fabric gradlew executable
+        run: chmod +x ./Fabric/gradlew
+
+      - name: Build Fabric
+        working-directory: ./Fabric
+        run: ./gradlew build -Pmod_version=${{ env.RELEASE_VERSION }}
+
+      - name: Publish Fabric to Modrinth
+        working-directory: ./Fabric
+        env:
+          MODRINTH_TOKEN: ${{ secrets.MODRINTH_TOKEN }}
+        run: ./gradlew publishMods -Pmod_version=${{ env.RELEASE_VERSION }}
+
+      - name: Upload Fabric jar to GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: Fabric/build/libs/coedeposits-fabric-1.20-${{ env.RELEASE_VERSION }}.jar
+          generate_release_notes: true
+          # ALPHA mod (Modrinth type=ALPHA) — flag the GitHub release as a pre-release.
+          prerelease: true

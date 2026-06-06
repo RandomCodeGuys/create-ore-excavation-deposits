@@ -1,6 +1,10 @@
 plugins {
     id 'fabric-loom' version '1.7-SNAPSHOT'
     id 'idea'
+    // me.modmuss50.mod-publish-plugin — drives `./gradlew publishMods` to push the remapped jar
+    // to Modrinth. Driven by .github/workflows/publish-fabric.yml on the 1.20.1 branch (token
+    // from the repo secret MODRINTH_TOKEN).
+    id 'me.modmuss50.mod-publish-plugin' version '0.7.4'
 }
 
 version = mod_version
@@ -94,6 +98,13 @@ dependencies {
     modLocalRuntime("com.tom5454.chunkstorage:ChunkStorageFabric-120:1.0.4") {
         exclude(group: 'net.fabricmc.fabric-loader')
     }
+
+    // Dev/test mod loaded into runClient only — not a compile dep, not shipped. Create:
+    // Steam 'n' Rails (a Create addon). PEA8dAwJ = 1.7.2 Fabric 1.20.1 (C6 build, matches
+    // Create 6.x). Requires Create (already a dep above); Modrinth artifacts carry no POM,
+    // so nothing transitive is pulled.
+    modLocalRuntime "maven.modrinth:create-steam-n-rails:PEA8dAwJ"
+
     // YACL — the in-game config screen + deposit editor (reached via ModMenu).
     // OPTIONAL (fabric.mod.json "suggests"), but kept in the DEV runtime so the config
     // menu is testable in runClient.
@@ -112,17 +123,30 @@ dependencies {
     runtimeOnly "org.quiltmc.parsers:gson:0.2.1"
     runtimeOnly "org.quiltmc.parsers:json:0.2.1"
     // Xaero's World Map — the world-map overlay target (closed-source, OPTIONAL:
-    // fabric.mod.json lists it under "suggests"). COMPILE classpath only, for the
+    // fabric.mod.json lists it under "suggests"). COMPILE classpath always, for the
     // GuiMapAccessor @Accessor + the ScreenEvents GuiMap reference.
-    //
-    // Deliberately NOT modLocalRuntime: World Map JiJ-bundles its own required
-    // `xaerolib` (META-INF/jars/xaerolib-fabric-1.20.1-1.1.15.jar) and Loom does NOT
-    // load a dependency mod's nested JiJ jars in the dev runtime, so adding World Map
-    // to runClient crashes with "requires xaerolib, which is missing" (Modrinth has
-    // no standalone Fabric xaerolib — it's CurseForge/JiJ-only). In PROD the Fabric
-    // loader extracts the JiJ automatically, so a normal Xaero install just works.
-    // → Test the overlay in a real Fabric instance; runClient covers the core.
     modCompileOnly "maven.modrinth:xaeros-world-map:${xaero_world_map_version}"
+
+    // DEV-ONLY: load Xaero's World Map into runClient so the deposit overlay (and Create's own
+    // train-map) can be tested in dev. PINNED to WorldMap 1.39.12 (xaero_world_map_version) — the
+    // last release before Xaero moved its shared classes (ScreenBase etc.) into xaerolib. 1.40.x
+    // breaks Create's bundled Xaero compat (Create bug #9770 — ClassNotFoundException
+    // xaero.map.gui.ScreenBase) which crashes the whole GuiMap render. 1.39.12 is self-contained
+    // (no JiJ'd xaerolib to supply separately) and still ships xaero.map.gui.ScreenBase, so BOTH
+    // Create's train-map and our overlay work.
+    //
+    // Supplied as a files() artifact, NOT the modCompileOnly maven coord above: a coord that sits
+    // in both compileOnly and localRuntime gets remapped for compile but stays at INTERMEDIARY on
+    // the runtime side (→ NoSuchFieldError in GuiMap). A separate files() jar is remapped to the
+    // named dev mappings independently. Copy it from the Gradle modules cache
+    // (maven.modrinth/xaeros-world-map/1.39.12_Fabric_1.20) into libs/ (gitignored, NOT shipped).
+    // Guarded so a checkout without it still builds; runClient just lacks Xaero then.
+    def xaeroMapDevJar = file('libs/xaeros-world-map-1.39.12_Fabric_1.20.jar')
+    if (xaeroMapDevJar.exists()) {
+        modLocalRuntime files(xaeroMapDevJar)
+    } else {
+        logger.warn('[coedeposits] Fabric/libs/xaeros-world-map-1.39.12_Fabric_1.20.jar missing — Xaero World Map NOT added to runClient. Copy it from the Gradle modules cache to enable the overlay in dev.')
+    }
 
     // findbugs jsr305 — @Nullable used by platform-shared/pack/BundledRecipePack.java.
     compileOnly "com.google.code.findbugs:jsr305:3.0.2"
@@ -181,4 +205,46 @@ processResources {
 tasks.withType(JavaCompile).configureEach {
     it.options.encoding = 'UTF-8'
     it.options.release = 17
+}
+
+// ---- Modrinth publishing (Fabric 1.20.1) ------------------------------------
+// `./gradlew publishMods` uploads the remapped jar to the SAME Modrinth project as the
+// Forge/NeoForge lines. Driven by .github/workflows/publish-fabric.yml on the 1.20.1 branch
+// (MODRINTH_TOKEN from the repo secret). Release flow: bump mod_version, update CHANGELOG.md,
+// then `git tag 1.20.1-fabric-vX.Y.Z && git push origin 1.20.1-fabric-vX.Y.Z`.
+publishMods {
+    // Loom's remapJar is the shippable (intermediary-remapped) artifact — NOT tasks.jar.
+    file = tasks.remapJar.archiveFile
+
+    // Modrinth version_number must be UNIQUE per project. Forge 1.20.1 ships "1.20.1-X.Y.Z" and
+    // NeoForge ships "X.Y.Z" to this same project, so the Fabric line appends "-fabric" → e.g.
+    // "1.20.1-0.1.6-fabric". mod_version itself is untouched.
+    version = "${minecraft_version}-${mod_version}-fabric"
+    displayName = "[Fabric ${minecraft_version}] Create Ore Excavation Deposits ${mod_version}"
+
+    // Latest CHANGELOG.md entry — repo root, one level up from this Fabric/ subproject.
+    changelog = providers.provider {
+        def f = file('../CHANGELOG.md')
+        if (!f.exists()) return "See https://github.com/RandomCodeGuys/create-ore-excavation-deposits/commits/1.20.1 for changes."
+        def text = f.text
+        def matcher = text =~ /(?s)## .*?(?=\n## |\z)/
+        return matcher.find() ? matcher.group(0).trim() : text
+    }
+
+    // ALPHA while the 1.20.1 line is still iterating.
+    type = ALPHA
+    modLoaders.add("fabric")
+
+    modrinth {
+        accessToken = providers.environmentVariable("MODRINTH_TOKEN")
+        // Same project as Forge/NeoForge — the "-fabric" version suffix keeps them distinct.
+        projectId = "XfN8l56o"
+        minecraftVersions.add(minecraft_version)  // 1.20.1
+
+        requires { slug = "create-ore-excavation" }
+        requires { slug = "fabric-api" }
+        optional { slug = "xaeros-world-map" }
+        optional { slug = "xaeros-minimap" }
+        optional { slug = "yacl" }
+    }
 }

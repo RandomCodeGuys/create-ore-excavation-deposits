@@ -1,5 +1,6 @@
 package uk.niknik.coedeposits.client;
 
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -18,23 +19,50 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
 /**
- * Click-to-select item picker — a small vanilla {@link Screen} with a searchable
- * {@link ObjectSelectionList} of every registered item (icon + name + id).
+ * Click-to-select item picker: a searchable list of every registered item, each shown by its
+ * real inventory icon + name + id. Selecting an entry calls {@code onPick} with the item id;
+ * cancelling returns to {@code parent}. The deposit editor uses this for the drilling-output
+ * rows, where the item picker must sit on the same row as a Remove button (so YACL's inline
+ * item controller — which takes a whole row — can't be used).
  *
- * <p>Replaces YACL's {@code ItemController} dropdown, which renders ALL items
- * eagerly and CRASHES when a mod item's renderer assumes an in-world player — e.g.
- * Create's {@code handheld_worldshaper} does {@code player.getMainArm()} and NPEs
- * when the config is open from the main menu (no world → no player). Here the icon
- * is drawn ONLY when a player exists, so the main-menu case can't NPE; the list +
- * names still build fine without a player. Selecting an entry calls {@code onPick}
- * with the item id (the caller saves + navigates). Mirrors {@link FluidPickerScreen};
- * used by {@link DepositEditorScreens}.
+ * <p>The item list (icon + id + display name) is computed <b>once per session</b> into a
+ * static cache: building a hover name can be slow and a few modded items throw while doing it,
+ * so doing it per keystroke (in {@code reload}) both lagged and truncated the list at the first
+ * misbehaving item. The cache guards each name in a try/catch (falling back to the id) so every
+ * item always appears.
  */
 public final class ItemPickerScreen extends Screen {
+
+    /** One cached, render-ready item: icon stack + id + (safely resolved) display name. */
+    private record ItemEntry(ItemStack stack, String id, String name) {}
+
+    /** Built once — the item registry is immutable at runtime. */
+    private static List<ItemEntry> cache;
+
+    private static List<ItemEntry> allItems() {
+        if (cache == null) {
+            List<ItemEntry> list = new ArrayList<>();
+            for (Item it : BuiltInRegistries.ITEM) {
+                if (it == Items.AIR) continue;
+                String id = BuiltInRegistries.ITEM.getKey(it).toString();
+                ItemStack stack = new ItemStack(it);
+                String name;
+                try {
+                    name = stack.getHoverName().getString();
+                } catch (Exception e) {
+                    name = id;   // never let one misbehaving item drop out of (or break) the list
+                }
+                list.add(new ItemEntry(stack, id, name));
+            }
+            list.sort(Comparator.comparing(ItemEntry::id));
+            cache = List.copyOf(list);
+        }
+        return cache;
+    }
+
     private final Screen parent;
     private final String currentItemId;
     private final Consumer<String> onPick;
-    private final List<Item> items;
 
     private EditBox search;
     private ItemList list;
@@ -44,10 +72,6 @@ public final class ItemPickerScreen extends Screen {
         this.parent = parent;
         this.currentItemId = currentItemId == null ? "" : currentItemId;
         this.onPick = onPick;
-        this.items = BuiltInRegistries.ITEM.stream()
-                .filter(it -> it != Items.AIR)
-                .sorted(Comparator.comparing(it -> BuiltInRegistries.ITEM.getKey(it).toString()))
-                .toList();
     }
 
     @Override
@@ -72,8 +96,8 @@ public final class ItemPickerScreen extends Screen {
     }
 
     /** Selection commits via the callback; the caller decides where to navigate next. */
-    private void choose(Item it) {
-        this.onPick.accept(BuiltInRegistries.ITEM.getKey(it).toString());
+    private void choose(String id) {
+        this.onPick.accept(id);
     }
 
     @Override
@@ -92,21 +116,20 @@ public final class ItemPickerScreen extends Screen {
     }
 
     private final class ItemList extends ObjectSelectionList<ItemList.Row> {
+        // 1.20.1 ctor: (Minecraft, width, height, y0, y1, itemHeight) — 1.21.1 dropped the y1 arg.
         ItemList(Minecraft mc, int width, int height, int y, int itemHeight) {
             super(mc, width, height, y, y + height, itemHeight);
         }
 
         void reload(String needle) {
             this.clearEntries();
-            for (Item it : items) {
-                String id = BuiltInRegistries.ITEM.getKey(it).toString();
-                String name = new ItemStack(it).getHoverName().getString();
+            for (ItemEntry e : allItems()) {
                 if (!needle.isEmpty()
-                        && !id.toLowerCase(Locale.ROOT).contains(needle)
-                        && !name.toLowerCase(Locale.ROOT).contains(needle)) {
+                        && !e.id().toLowerCase(Locale.ROOT).contains(needle)
+                        && !e.name().toLowerCase(Locale.ROOT).contains(needle)) {
                     continue;
                 }
-                this.addEntry(new Row(it, id, name));
+                this.addEntry(new Row(e));
             }
         }
 
@@ -121,27 +144,21 @@ public final class ItemPickerScreen extends Screen {
         }
 
         final class Row extends ObjectSelectionList.Entry<Row> {
-            private final Item item;
-            private final ItemStack stack;
-            private final String id;
-            private final String name;
+            private final ItemEntry entry;
 
-            Row(Item item, String id, String name) {
-                this.item = item;
-                this.stack = new ItemStack(item);
-                this.id = id;
-                this.name = name;
+            Row(ItemEntry entry) {
+                this.entry = entry;
             }
 
             @Override
             public Component getNarration() {
-                return Component.literal(this.name);
+                return Component.literal(entry.name());
             }
 
             @Override
             public boolean mouseClicked(double mx, double my, int button) {
                 if (button == 0) {
-                    choose(this.item);
+                    choose(entry.id());
                     return true;
                 }
                 return false;
@@ -150,16 +167,11 @@ public final class ItemPickerScreen extends Screen {
             @Override
             public void render(GuiGraphics g, int index, int top, int left, int width, int height,
                                int mouseX, int mouseY, boolean hovered, float partial) {
-                // Icon only when a player exists: some mod item renderers (e.g. Create's
-                // handheld_worldshaper) call player.getMainArm() and NPE with no player
-                // (config opened from the main menu). Names/ids still show either way.
-                if (Minecraft.getInstance().player != null) {
-                    g.renderFakeItem(this.stack, left + 2, top + (height - 16) / 2);
-                }
-                boolean current = this.id.equals(currentItemId);
+                g.renderItem(entry.stack(), left + 2, top + (height - 16) / 2);
+                boolean current = entry.id().equals(currentItemId);
                 var font = ItemPickerScreen.this.font;
-                g.drawString(font, this.name + (current ? "  §a(current)" : ""), left + 24, top + 3, 0xFFFFFF);
-                g.drawString(font, "§8" + this.id, left + 24, top + 13, 0x808080);
+                g.drawString(font, entry.name() + (current ? "  §a(current)" : ""), left + 24, top + 3, 0xFFFFFF);
+                g.drawString(font, "§8" + entry.id(), left + 24, top + 13, 0x808080);
             }
         }
     }

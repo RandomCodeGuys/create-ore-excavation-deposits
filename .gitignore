@@ -38,3 +38,6 @@ run/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/
+
+### Dev-only libs extracted from a dependency's JiJ for runClient (e.g. Xaero's xaerolib) — closed-source, not shipped ###
+Fabric/libs/
