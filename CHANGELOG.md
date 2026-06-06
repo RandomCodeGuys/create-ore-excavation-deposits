@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.6
+
+### Changed
+- **The in-game editor and config screen, reworked** — the Forge 1.20.1 line catches up to the NeoForge 0.1.6 build. The config screen is now two tabs: **General** (generation / reveal / logging / client settings) and **Deposits** (an inline list, one row per deposit with **Edit → / Disable / Delete**, Delete behind a confirmation). Vein recipes, biome filter and dimensions are compact dropdown pickers; drilling outputs use a searchable visual item picker (icon + name) with Count and Chance-% number fields. The old monolithic editor/config classes were split into small per-tab / per-group files.
+
+### Fixed
+- **Add deposit** now assigns a unique id, so creating several in a row (or after deletes) can no longer make two deposits share a `coedeposits:new_N` key — which previously collided silently in `deposits.json`.
+- **Biome filter is usable from the main menu** — with no world loaded the biome registry (and thus the real tag list) isn't available, so the picker now offers the common vanilla biome tags instead of greying out. Pack-specific / modded tags still need the editor opened in a world.
+
 ## 0.1.5-1
 
 ### Fixed

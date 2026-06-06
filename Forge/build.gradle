@@ -162,6 +162,11 @@ dependencies {
     implementation(fg.deobf("maven.modrinth:create-ore-excavation:9mCy0ePP")) { transitive = false }
     implementation(fg.deobf("maven.modrinth:yacl:sCWgXDYQ")) { transitive = false }
     implementation(fg.deobf("maven.modrinth:xaeros-world-map:5mJcHKn6")) { transitive = false }
+
+    // Dev/test mod loaded into runClient only — not a compile dep, not bundled (runtimeOnly).
+    // Mirrors the NeoForge line's Cubes Without Borders. QzVMYIfG = 3.0.0+1.20 (forge), the
+    // build Modrinth lists under 1.20.1.
+    runtimeOnly(fg.deobf("maven.modrinth:cubes-without-borders:QzVMYIfG")) { transitive = false }
 }
 
 tasks.named('processResources', ProcessResources).configure {

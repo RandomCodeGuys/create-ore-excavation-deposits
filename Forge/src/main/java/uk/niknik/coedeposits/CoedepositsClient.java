@@ -9,8 +9,8 @@ import net.minecraftforge.fml.config.ModConfig;
  * Client-only init. Registers {@link ClientConfig} (cosmetic UI knobs) and the
  * Mods-menu config screen. Invoked from the main {@link Coedeposits} constructor
  * via {@code DistExecutor.unsafeRunWhenOn(Dist.CLIENT, ...)} so the class — and
- * the YACL-importing {@code YaclConfigScreen} it may reference — is only ever
- * loaded on the client dist.
+ * the YACL-importing {@code CoedepositsConfigScreen} it may reference — is only
+ * ever loaded on the client dist.
  *
  * <p><b>1.20.1 line:</b> Forge 1.20.1 has no {@code @Mod(dist=CLIENT)} entry or
  * {@code ModContainer} ctor like NeoForge — client init is a plain static
@@ -35,11 +35,11 @@ public final class CoedepositsClient {
 
     /**
      * Register the Mods-menu config screen. When YACL is present we use the rich
-     * {@link uk.niknik.coedeposits.client.YaclConfigScreen} (which also hosts the
-     * deposit-editor button). The reference is kept inside the YACL-loaded branch
-     * so {@code YaclConfigScreen} (which imports the YACL API) is never
-     * class-loaded when YACL is absent — Forge 1.20.1 has no native fallback, so
-     * that case falls back to {@code .toml}-only editing.
+     * {@link uk.niknik.coedeposits.client.config.CoedepositsConfigScreen} (two tabs:
+     * General settings + the inline deposit editor). The reference is kept inside the
+     * YACL-loaded branch so {@code CoedepositsConfigScreen} (which imports the YACL API)
+     * is never class-loaded when YACL is absent — Forge 1.20.1 has no native fallback,
+     * so that case falls back to {@code .toml}-only editing.
      */
     private static void registerConfigScreen() {
         if (!ModList.get().isLoaded(YACL_MODID)) {
@@ -49,7 +49,7 @@ public final class CoedepositsClient {
         ModLoadingContext.get().registerExtensionPoint(
                 ConfigScreenHandler.ConfigScreenFactory.class,
                 () -> new ConfigScreenHandler.ConfigScreenFactory(
-                        (mc, parent) -> uk.niknik.coedeposits.client.YaclConfigScreen.create(parent)));
+                        (mc, parent) -> uk.niknik.coedeposits.client.config.CoedepositsConfigScreen.create(parent)));
         Coedeposits.LOGGER.info("[coedeposits] YACL present — config screen + deposit editor registered");
     }
 }
