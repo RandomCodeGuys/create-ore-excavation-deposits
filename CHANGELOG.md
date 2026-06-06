@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.6
+
+### Changed
+- **In-game editor & config screen reworked for clarity.** The config screen is now two tabs — **General** (generation, reveal, logging, client) and **Deposits** (the deposit list, inline). Each deposit is one row with **Edit → / Disable / Delete** (Delete behind a confirmation; pristine bundled defaults show only Edit + Disable). The per-deposit editor is two tabs — **Core** (with recipes & filters folded in) and **Inline recipe** — with clearer field help.
+- **Compact pickers.** Vein recipes, Biome filter, Dimensions and the global Enabled-dimensions list are now one-line rows; you add an entry by picking from a dropdown of the still-available values. Drilling outputs use a searchable visual item picker (icon + name) per output, with Count and Chance-% number fields.
+
+### Fixed
+- **Add deposit** now always assigns a unique id, so creating several in a row (or after deletes) can no longer produce two deposits sharing a `coedeposits:new_N` key — which previously collided silently in `deposits.json`.
+
+### Internal
+- The editor/config UI was split out of two monolithic classes into small per-tab / per-group files (`client/config/general/*`, `client/config/deposit/*`) with explicit option declarations. No change to the `deposits.json` schema or generation behaviour.
+
 ## 0.1.5
 
 ### Added
