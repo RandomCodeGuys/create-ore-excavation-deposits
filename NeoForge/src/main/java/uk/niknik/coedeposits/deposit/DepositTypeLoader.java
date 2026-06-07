@@ -112,19 +112,20 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     private final Map<ResourceLocation, DepositType> implicitTypes = new ConcurrentHashMap<>();
 
     /** Off-thread reload result: merged registry plus per-layer counts for logging. */
-    public record Prepared(Map<ResourceLocation, DepositType> types, int datapackCount, int overlayCount) {}
+    public record Prepared(Map<ResourceLocation, DepositType> types, int datapackCount, int scriptedCount, int overlayCount) {}
 
     /**
      * Off-thread phase of the NeoForge reload pipeline. Builds the merged
-     * registry from the datapack layer then the config overlay; {@link #apply}
-     * swaps it into {@link #types} on the main thread.
+     * registry: datapack defaults → KubeJS-scripted types → config overlay (last
+     * wins). {@link #apply} swaps it into {@link #types} on the main thread.
      */
     @Override
     protected Prepared prepare(ResourceManager mgr, ProfilerFiller profiler) {
         Map<ResourceLocation, DepositType> merged = new HashMap<>();
         int datapackCount = loadDatapackTypes(mgr, merged);
+        int scriptedCount = loadScriptedTypes(merged);
         int overlayCount = loadConfigOverlay(merged);
-        return new Prepared(merged, datapackCount, overlayCount);
+        return new Prepared(merged, datapackCount, scriptedCount, overlayCount);
     }
 
     /**
@@ -143,8 +144,9 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
         implicitTypes.clear();
         if (Config.LOG_LIFECYCLE.get()) {
             Coedeposits.LOGGER.info(
-                    "[coedeposits] loaded {} deposit types ({} datapack + {} config-overlay override(s)): {}",
-                    types.size(), prepared.datapackCount(), prepared.overlayCount(), types.keySet());
+                    "[coedeposits] loaded {} deposit types ({} datapack + {} KubeJS + {} config-overlay override(s)): {}",
+                    types.size(), prepared.datapackCount(), prepared.scriptedCount(),
+                    prepared.overlayCount(), types.keySet());
         }
         // Structural config validation — log every reload (server start + /reload)
         // so silent misconfigs (empty recipe pool, degenerate budget, oversize
@@ -184,6 +186,28 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
             } catch (Exception ex) {
                 Coedeposits.LOGGER.error("[coedeposits] failed reading datapack deposit_type '{}': {}",
                         id, ex.toString());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Merge KubeJS-script-registered types ({@link ScriptedDepositRegistry}) over
+     * the datapack layer — same parse + inline-binding + junk-pruning as the
+     * datapack path. A no-op when KubeJS isn't installed (the registry is then
+     * always empty), so this stays free for vanilla setups.
+     *
+     * @return number of scripted types merged
+     */
+    private static int loadScriptedTypes(Map<ResourceLocation, DepositType> out) {
+        int count = 0;
+        for (Map.Entry<ResourceLocation, com.google.gson.JsonObject> e : ScriptedDepositRegistry.snapshot().entrySet()) {
+            Optional<DepositType> parsed = DepositType.CODEC.parse(JsonOps.INSTANCE, e.getValue())
+                    .resultOrPartial(err -> Coedeposits.LOGGER.error(
+                            "[coedeposits] KubeJS deposit type '{}' failed to parse: {}", e.getKey(), err));
+            if (parsed.isPresent()) {
+                out.put(e.getKey(), bindInlineRecipe(e.getKey(), parsed.get()));
+                count++;
             }
         }
         return count;

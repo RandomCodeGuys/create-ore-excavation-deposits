@@ -48,6 +48,13 @@ repositories {
         }
         filter { includeGroup "maven.modrinth" }
     }
+
+    // KubeJS + Rhino (Latvian's maven) — OPTIONAL integration dependency. Scoped
+    // to the dev.latvian.mods group so it can't shadow anything else.
+    maven {
+        url = "https://maven.latvian.dev/releases"
+        content { includeGroup "dev.latvian.mods" }
+    }
 }
 
 base {
@@ -186,6 +193,16 @@ dependencies {
     //   /v2/project/yacl/version?game_versions=["1.21.1"]&loaders=["neoforge"]).
     compileOnly "maven.modrinth:yacl:7TVdVtxF"
     localRuntime "maven.modrinth:yacl:7TVdVtxF"
+
+    // KubeJS — OPTIONAL script integration (the kubejs/* plugin + CoeDeposits
+    // binding). compileOnly + non-transitive: we only need its API classes to
+    // compile against; players supply KubeJS at runtime, and the plugin is only
+    // discovered (via kubejs.plugins.txt) when KubeJS is actually installed, so
+    // the mod loads fine without it. Non-transitive keeps KubeJS's own dep tree
+    // (Architectury et al.) out of our build classpath. rhino is on the compile
+    // path because KubeJS's BindingRegistry signature references it.
+    compileOnly("dev.latvian.mods:kubejs-neoforge:2101.7.2-build.295") { transitive = false }
+    compileOnly("dev.latvian.mods:rhino:2101.2.7-build.74") { transitive = false }
 
     // Dev-only QoL mods loaded into runClient/runServer. Not shipped with the
     // published artifact, just helpers while iterating in IDE.
