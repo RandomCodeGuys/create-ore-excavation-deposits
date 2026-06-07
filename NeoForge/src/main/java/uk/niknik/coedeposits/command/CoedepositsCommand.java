@@ -660,11 +660,11 @@ public final class CoedepositsCommand {
             net.minecraft.ChatFormatting color = isDeclared
                     ? net.minecraft.ChatFormatting.GRAY
                     : net.minecraft.ChatFormatting.GOLD;
-            final ResourceLocation fid = id;
+            final String flabel = shortTypeLabel(id);
             final String ftag = tag;
             final int fn = n;
             src.sendSuccess(() -> Component.literal(String.format(
-                    "  %s  [%s]  %d placed", fid, ftag, fn)).withStyle(color), false);
+                    "  %s  [%s]  %d placed", flabel, ftag, fn)).withStyle(color), false);
             shown++;
         }
         if (adoptedCount > 0) {
@@ -673,6 +673,22 @@ public final class CoedepositsCommand {
                     .withStyle(net.minecraft.ChatFormatting.DARK_GRAY), false);
         }
         return all.size();
+    }
+
+    /**
+     * Compact display label for a deposit type in the {@code types} roster:
+     * keeps the namespace (the source mod — the point of the audit) but strips
+     * COE's verbose {@code ore_vein_type/} folder and trailing {@code _vein} so
+     * lines don't wrap. {@code createoreexcavation:ore_vein_type/coal} →
+     * {@code createoreexcavation:coal}; {@code kubejs:test_adopt_vein} →
+     * {@code kubejs:test_adopt}.
+     */
+    private static String shortTypeLabel(ResourceLocation id) {
+        String path = id.getPath();
+        int slash = path.lastIndexOf('/');
+        if (slash >= 0) path = path.substring(slash + 1);
+        if (path.endsWith("_vein")) path = path.substring(0, path.length() - "_vein".length());
+        return id.getNamespace() + ":" + path;
     }
 
     /** XZ-plane squared distance from a chunk centre to a block pos; used for sort comparator. */
