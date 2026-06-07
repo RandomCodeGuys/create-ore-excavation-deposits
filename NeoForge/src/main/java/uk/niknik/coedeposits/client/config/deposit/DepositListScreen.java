@@ -88,6 +88,30 @@ public final class DepositListScreen {
             cat.option(DepositRowController.row(Component.literal(d.id + suffix), actions));
         }
 
+        // ── Adopted foreign COE veins (no deposit_type of their own) ────────
+        // Veins from other mods / datapacks that auto-adopt onto the map. They
+        // have no type to edit, so list them here with a one-click Customize that
+        // creates a placement=coe type (id = vein id, so already-placed adopted
+        // deposits upgrade seamlessly) and opens its editor.
+        List<String> adoptable = DepositBindings.adoptableVeinIds();
+        if (!adoptable.isEmpty()) {
+            cat.option(DepositRowController.row(
+                    Component.literal("§8— adopted: COE veins from other mods/datapacks (no type yet) —"),
+                    List.of()));
+            for (String veinId : adoptable) {
+                cat.option(DepositRowController.row(
+                        Component.literal(DepositBindings.shortVeinLabel(veinId) + "  §6(adopted)§r"),
+                        List.of(new DepositRowController.Action(
+                                Component.literal("✎ Customize"),
+                                () -> {
+                                    Draft d = DepositBindings.adoptDraft(veinId);
+                                    DepositBindings.drafts.add(0, d);
+                                    DepositBindings.persist();
+                                    mc.setScreen(DepositDetailScreen.create(d, rebuild.get()));
+                                }))));
+            }
+        }
+
         return cat.build();
     }
 }

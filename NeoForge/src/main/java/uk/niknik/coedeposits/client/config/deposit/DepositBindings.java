@@ -21,6 +21,7 @@ import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.client.DepositAuthoring;
 import uk.niknik.coedeposits.client.DepositAuthoring.Draft;
+import uk.niknik.coedeposits.deposit.DepositType;
 
 /**
  * Shared state + the write-through binding for the deposit editor — the deposit-side
@@ -43,6 +44,8 @@ public final class DepositBindings {
     public static List<String> itemTagIds = List.of();
     public static List<String> biomeTagIds = List.of();
     public static List<String> dimensionIds = List.of();
+    /** All COE vein-recipe ids known to the client — superset; {@link #adoptableVeinIds} filters it. */
+    public static List<String> coeVeinIds = List.of();
 
     /** UI choice for reveal: DEFAULT means "use the global setting" (no per-type override). */
     public enum RevealChoice implements StringRepresentable {
@@ -151,15 +154,73 @@ public final class DepositBindings {
         if (c != null) {
             recipeIds = safe(() -> c.getRecipeManager().getRecipes().stream()
                     .map(h -> h.id().toString()).sorted().toList());
+            // COE vein recipes only — the pool of potentially-adoptable foreign veins.
+            coeVeinIds = safe(() -> c.getRecipeManager().getRecipes().stream()
+                    .filter(h -> h.value() instanceof com.tom.createores.recipe.VeinRecipe)
+                    .map(h -> h.id().toString()).sorted().toList());
             biomeTagIds = safe(() -> c.registryAccess().registryOrThrow(Registries.BIOME).getTagNames()
                     .map(t -> t.location().toString()).sorted().toList());
             dimensionIds = safe(() -> c.levels().stream()
                     .map(k -> k.location().toString()).sorted().toList());
         } else {
             recipeIds = List.of();
+            coeVeinIds = List.of();
             biomeTagIds = List.of();
             dimensionIds = List.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end");
         }
+    }
+
+    /**
+     * COE vein recipes that no current draft references — i.e. veins that would be
+     * auto-<b>adopted</b> (no deposit_type of their own). These are surfaced in the
+     * Deposits tab so they can be customised. Sorted by id.
+     */
+    public static List<String> adoptableVeinIds() {
+        java.util.Set<String> referenced = new java.util.HashSet<>();
+        for (Draft d : drafts) {
+            for (DepositAuthoring.RecipeEntry e : d.veinRecipes) {
+                if (e.recipe != null && !e.recipe.isBlank()) referenced.add(e.recipe.trim());
+            }
+        }
+        List<String> out = new ArrayList<>();
+        for (String v : coeVeinIds) {
+            if (!referenced.contains(v)) out.add(v);
+        }
+        return out;
+    }
+
+    /**
+     * Build a draft that customises an adopted foreign vein: a {@code placement=coe}
+     * type whose <b>id equals the vein id</b>, so already-placed adopted deposits
+     * (whose typeId is the vein id) seamlessly upgrade to this declared type once it
+     * loads. Seeded with the same hash colour the adopted vein already showed.
+     */
+    public static Draft adoptDraft(String veinId) {
+        Draft d = new Draft();
+        d.id = veinId;
+        d.placement = DepositType.Placement.COE;
+        d.veinRecipes.add(new DepositAuthoring.RecipeEntry(veinId, 1));
+        d.hasMapColor = true;
+        d.mapColor = defaultColorFor(veinId);
+        return d;
+    }
+
+    /** Hash colour matching the world-map renderer's fallback, so customising doesn't change the marker colour. */
+    private static int defaultColorFor(String id) {
+        int h = id.hashCode();
+        int r = 80 + ((h >>> 16) & 0x7F);
+        int g = 80 + ((h >>> 8) & 0x7F);
+        int b = 80 + (h & 0x7F);
+        return (r << 16) | (g << 8) | b;
+    }
+
+    /** Compact display label for a vein id: drop COE's {@code ore_vein_type/} folder + trailing {@code _vein}. */
+    public static String shortVeinLabel(String veinId) {
+        String s = veinId;
+        int slash = s.lastIndexOf('/');
+        if (slash >= 0) s = s.substring(0, s.indexOf(':') + 1) + s.substring(slash + 1);
+        if (s.endsWith("_vein")) s = s.substring(0, s.length() - "_vein".length());
+        return s;
     }
 
     private static List<String> safe(Supplier<List<String>> src) {
