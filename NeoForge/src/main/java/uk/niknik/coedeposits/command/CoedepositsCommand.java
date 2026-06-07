@@ -618,8 +618,13 @@ public final class CoedepositsCommand {
         // but NOT in the declared registry.
         var declared = Coedeposits.DEPOSIT_TYPES.all().keySet();
         java.util.Set<ResourceLocation> all = new java.util.TreeSet<>(byId);
-        all.addAll(counts.keySet());
-        all.addAll(declared);
+        all.addAll(counts.keySet());  // anything placed in this dim is always relevant
+        // Declared types: only those eligible in THIS dimension — don't list
+        // nether-only ores under the overworld, etc.
+        for (ResourceLocation id : declared) {
+            DepositType dt = Coedeposits.DEPOSIT_TYPES.get(id);
+            if (dt != null && dt.matchesDimension(dim)) all.add(id);
+        }
 
         if (all.isEmpty()) {
             src.sendSuccess(() -> Component.literal("no deposit types loaded"), false);
