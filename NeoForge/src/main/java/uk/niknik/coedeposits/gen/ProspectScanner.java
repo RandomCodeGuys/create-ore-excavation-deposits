@@ -163,6 +163,13 @@ public final class ProspectScanner {
             ResourceLocation declaredType = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(veinId);
             boolean adoptable = !isManaged && (declaredType != null || autoAdopt);
             ResourceLocation typeId = declaredType != null ? declaredType : veinId;
+            // Foreign adoptable vein (no declared type): register its implicit
+            // type NOW (server thread) so materialize()'s DEPOSIT_TYPES.get(typeId)
+            // resolves it — otherwise the prospect path would silently drop every
+            // adopted deposit (the chunk-load path calls adoptImplicit itself).
+            if (adoptable && declaredType == null) {
+                Coedeposits.DEPOSIT_TYPES.adoptImplicit(veinId);
+            }
             VeinRecipe r = h.value();
             out.add(new CoeVein(typeId, r.getPlacement(),
                     r.biomeWhitelist().orElse(null), r.biomeBlacklist().orElse(null),

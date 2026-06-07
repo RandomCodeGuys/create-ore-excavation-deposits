@@ -96,6 +96,14 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
         Deposit existing = store.lookup(cp);
         if (existing != null) {
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(existing.typeId());
+            // Re-register a lost implicit type for a previously-adopted foreign
+            // COE vein. Implicit types are in-memory (cleared on reload, gone on
+            // restart); without this a saved adopted deposit would skip its
+            // OreData re-apply after a restart, leaving the vein empty.
+            if (type == null && existing.placement() == DepositType.Placement.COE
+                    && resolveRecipeValue(lvl, existing.typeId()) != null) {
+                type = Coedeposits.DEPOSIT_TYPES.adoptImplicit(existing.typeId());
+            }
             if (type != null && !type.veinRecipes().isEmpty()) {
                 ResourceLocation recipeId;
                 if (existing.placement() == DepositType.Placement.COE) {
