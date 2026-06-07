@@ -395,7 +395,7 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
      * the same primitive vanilla MC uses for feature placement and gives a
      * proper avalanche across neighbouring chunks.
      */
-    private static float rollDeterministicMul(long worldSeed, ChunkPos cp) {
+    static float rollDeterministicMul(long worldSeed, ChunkPos cp) {
         WorldgenRandom rng = new WorldgenRandom(new LegacyRandomSource(0L));
         rng.setLargeFeatureSeed(worldSeed, cp.x, cp.z);
         return rng.nextFloat();
@@ -519,6 +519,27 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                 }
             }
         }
+        // ── Phase 3: COE-generation veins via COE's own locate ──────────────
+        // Declared placement=COE types + auto-adopted foreign veins are placed by
+        // COE's spread. Reuse COE's exact locate (it owns the spread math) to find
+        // the nearest one the finder query wants, filtered to recipes we adopt
+        // (never a managed recipe — those come from Phases 1-2). Already-placed COE
+        // deposits were caught by Phase 1; this extends finder reach to ones not
+        // yet generated / prospected.
+        boolean autoAdopt = Config.AUTO_ADOPT_COE_VEINS.get();
+        if (autoAdopt || Coedeposits.DEPOSIT_TYPES.hasCoePlacementType()) {
+            Pair<BlockPos, RecipeHolder<VeinRecipe>> coe = super.locate(pPos, level, searchRadius, rh -> {
+                if (!filter.test(rh)) return false;
+                ResourceLocation rid = rh.id();
+                if (Coedeposits.DEPOSIT_TYPES.managedVeinRecipes().contains(rid)) return false;
+                return autoAdopt || Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(rid) != null;
+            });
+            if (coe != null) {
+                float d = RandomSpreadGenerator.distance2d(coe.getFirst(), pPos);
+                if (d < bestDist) { bestDist = d; best = coe.getFirst(); bestRecipe = coe.getSecond(); }
+            }
+        }
+
         return best != null ? Pair.of(best, bestRecipe) : null;
     }
 

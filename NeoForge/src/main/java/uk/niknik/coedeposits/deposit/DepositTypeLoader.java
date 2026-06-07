@@ -386,4 +386,9 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     public ResourceLocation coeTypeIdForVeinRecipe(ResourceLocation veinRecipe) {
         return byCoeVeinRecipe.get(veinRecipe);
     }
+
+    /** True when at least one declared {@code placement=coe} type owns a vein recipe. */
+    public boolean hasCoePlacementType() {
+        return !byCoeVeinRecipe.isEmpty();
+    }
 }
