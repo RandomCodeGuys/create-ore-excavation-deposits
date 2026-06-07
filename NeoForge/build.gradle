@@ -202,7 +202,7 @@ dependencies {
     // (Architectury et al.) out of our build classpath. rhino is on the compile
     // path because KubeJS's BindingRegistry signature references it.
     compileOnly("dev.latvian.mods:kubejs-neoforge:2101.7.2-build.295") { transitive = false }
-    compileOnly("dev.latvian.mods:rhino:2101.2.7-build.74") { transitive = false }
+    compileOnly("dev.latvian.mods:rhino:2101.2.7-build.82") { transitive = false }
 
     // Dev-only QoL mods loaded into runClient/runServer. Not shipped with the
     // published artifact, just helpers while iterating in IDE.
@@ -234,6 +234,17 @@ dependencies {
     localRuntime "maven.modrinth:architectury-api:ZxYGwlk0"
     localRuntime "maven.modrinth:spark:v5qtqRQi"
     localRuntime "maven.modrinth:cubes-without-borders:epixUL1j"   // Cubes Without Borders 3.0.0+1.21 — requested dev/test mod (1 optional dep, skipped)
+
+    // ── 0.2.0 verification add-ons (dev runtime only) ───────────────────────
+    // Create Ore Excavation Plus — a real COE add-on, to exercise auto-adopt of
+    // a third-party vein onto the world map. No extra required deps (COE + Create
+    // are already present).
+    localRuntime "maven.modrinth:create-ore-excavation-plus:mevrMbVX"
+    // KubeJS + Rhino — exercises the CoeDeposits binding and a script-added COE
+    // vein (foreign → adopted). Non-transitive: Architectury is already on
+    // localRuntime above; pulling KubeJS's full dep tree would double it.
+    localRuntime("dev.latvian.mods:kubejs-neoforge:2101.7.2-build.295") { transitive = false }
+    localRuntime("dev.latvian.mods:rhino:2101.2.7-build.82") { transitive = false }
 }
 
 // FTB mods (Chunks/Library/Teams) are CurseForge-only — Modrinth has none of
