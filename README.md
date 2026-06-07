@@ -3,7 +3,7 @@
 A NeoForge add-on for **Create Ore Excavation** (COE) that replaces the flat one-chunk-per-vein model with proper **multi-chunk ore deposits** — connected blobs of a single ore type, with distance-from-spawn richness scaling, biome gating, a Xaero world-map overlay, and per-player reveal policies.
 
 - **Minecraft**: 1.21.1
-- **NeoForge**: 21.1.230
+- **NeoForge**: 21.1.211+ (built on 21.1.230)
 - **Required**: Create Ore Excavation
 - **Soft compat**: Xaero's World Map (overlay), Xaero's Minimap (waypoints), YACL (config screen + in-game deposit editor)
 

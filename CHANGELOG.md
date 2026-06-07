@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.6-1
+
+### Changed
+- **Lowered the required NeoForge floor to `21.1.211`** (was effectively `21.1.230`). The mod still builds and runs against `21.1.230`, but the published dependency `versionRange` in `neoforge.mods.toml` now declares `[21.1.211,)` to match the host mod **Create Ore Excavation**'s floor. Every NeoForge API the code touches already exists in `21.1.211`, so a `230`-built jar stays `211`-compatible. Resolves #2.
+
+> No code or generation changes — `0.1.6-1` is identical to `0.1.6` apart from the wider NeoForge compatibility range.
+
 ## 0.1.6
 
 ### Changed
