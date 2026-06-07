@@ -205,6 +205,7 @@ All `/coedeposits` subcommands require permission level 2 (standard OP — grant
 |---|---|
 | `/coedeposits tier` | Show distance-from-spawn and tier fraction at the current position. |
 | `/coedeposits list` | Top-10 nearest known deposits in the current dimension. |
+| `/coedeposits types` | Roster of deposit **types** in the current dimension — declared (managed/coe) plus auto-**adopted** foreign COE veins — with placed counts. The audit view for what `auto_adopt_coe_veins` pulled onto the map. |
 | `/coedeposits here` | Info about the deposit owning the player's current chunk. |
 | `/coedeposits scan` | Re-run the prospect-scan around the player at the configured `prospect_radius`. Useful after editing `deposits.json` + `/reload`. |
 | `/coedeposits regenerate [seed]` | Wipe the current dimension's deposits and run a fresh prospect-scan. Pass an optional seed to lock placement to a specific RNG and reproduce the pattern elsewhere. |

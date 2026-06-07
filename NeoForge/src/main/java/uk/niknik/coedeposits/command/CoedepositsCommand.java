@@ -48,6 +48,7 @@ import com.tom.createores.OreDataAttachment;
  * <ul>
  *   <li>{@code tier} — print distance + tier at the player's position</li>
  *   <li>{@code list} — top-10 nearest known deposits</li>
+ *   <li>{@code types} — roster of declared + auto-adopted deposit types with placed counts</li>
  *   <li>{@code here} — info about the deposit at the player's chunk</li>
  *   <li>{@code scan} — prospect-scan around the player (no wipe)</li>
  *   <li>{@code regenerate [seed]} — wipe the current dim + rescan, with an
@@ -75,6 +76,7 @@ public final class CoedepositsCommand {
                 // no state mutation, useful for debugging deposit layout.
                 .then(Commands.literal("tier").executes(CoedepositsCommand::cmdTier))
                 .then(Commands.literal("list").executes(CoedepositsCommand::cmdList))
+                .then(Commands.literal("types").executes(CoedepositsCommand::cmdTypes))
                 .then(Commands.literal("here").executes(CoedepositsCommand::cmdHere))
                 .then(Commands.literal("seed").executes(CoedepositsCommand::cmdSeed))
 
@@ -584,6 +586,88 @@ public final class CoedepositsCommand {
                     d.chunks().size(), d.tierFraction(), dist)), false);
         }
         return sorted.size();
+    }
+
+    /**
+     * Roster of deposit <b>types</b> in the current dimension — declared (managed
+     * / coe) plus auto-<b>adopted</b> foreign COE veins — with how many of each
+     * are placed. This is the audit view for "what did auto_adopt_coe_veins pull
+     * onto my map": adopted entries are COE veins from add-ons / datapacks that
+     * have no deposit_type of their own. (Per-dimension, like {@code list}/{@code here}.)
+     */
+    private static int cmdTypes(CommandContext<CommandSourceStack> ctx) {
+        var src = ctx.getSource();
+        ServerPlayer p = src.getPlayer();
+        if (p == null) {
+            src.sendFailure(Component.literal("must be a player"));
+            return 0;
+        }
+        ServerLevel lvl = p.serverLevel();
+        ResourceLocation dim = lvl.dimension().location();
+        DepositSavedData store = DepositSavedData.get(lvl);
+
+        // Count placed deposits per type id in this dimension. Ordered by id for a
+        // stable, scannable roster.
+        java.util.Comparator<ResourceLocation> byId = java.util.Comparator.comparing(ResourceLocation::toString);
+        java.util.Map<ResourceLocation, Integer> counts = new java.util.TreeMap<>(byId);
+        for (Deposit d : store.all().values()) {
+            counts.merge(d.typeId(), 1, Integer::sum);
+        }
+        // Union placed-type ids with declared types so configured-but-unplaced
+        // types still appear. A type is "adopted" when it's placed (or resolvable)
+        // but NOT in the declared registry.
+        var declared = Coedeposits.DEPOSIT_TYPES.all().keySet();
+        java.util.Set<ResourceLocation> all = new java.util.TreeSet<>(byId);
+        all.addAll(counts.keySet());
+        all.addAll(declared);
+
+        if (all.isEmpty()) {
+            src.sendSuccess(() -> Component.literal("no deposit types loaded"), false);
+            return 0;
+        }
+
+        int declaredCount = 0, adoptedCount = 0, placedTotal = 0;
+        for (int v : counts.values()) placedTotal += v;
+        for (ResourceLocation id : all) {
+            if (declared.contains(id)) declaredCount++; else adoptedCount++;
+        }
+
+        final int dc = declaredCount, ac = adoptedCount, pt = placedTotal;
+        src.sendSuccess(() -> Component.literal(String.format(
+                "deposit types in %s — %d declared, %d adopted | %d placed",
+                dim, dc, ac, pt)).withStyle(net.minecraft.ChatFormatting.AQUA), false);
+
+        int shown = 0;
+        final int limit = 40;
+        for (ResourceLocation id : all) {
+            if (shown >= limit) {
+                final int more = all.size() - shown;
+                src.sendSuccess(() -> Component.literal("  …and " + more + " more (raise/lower density or check the map)")
+                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY), false);
+                break;
+            }
+            boolean isDeclared = declared.contains(id);
+            DepositType t = Coedeposits.DEPOSIT_TYPES.get(id);
+            String tag = isDeclared
+                    ? (t != null ? t.placement().getSerializedName() : "?")
+                    : "adopted";
+            int n = counts.getOrDefault(id, 0);
+            net.minecraft.ChatFormatting color = isDeclared
+                    ? net.minecraft.ChatFormatting.GRAY
+                    : net.minecraft.ChatFormatting.GOLD;
+            final ResourceLocation fid = id;
+            final String ftag = tag;
+            final int fn = n;
+            src.sendSuccess(() -> Component.literal(String.format(
+                    "  %s  [%s]  %d placed", fid, ftag, fn)).withStyle(color), false);
+            shown++;
+        }
+        if (adoptedCount > 0) {
+            src.sendSuccess(() -> Component.literal(
+                    "  adopted = COE veins from other mods/datapacks, shown on the world map")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY), false);
+        }
+        return all.size();
     }
 
     /** XZ-plane squared distance from a chunk centre to a block pos; used for sort comparator. */
