@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.0
+
+A unification + compatibility release: one ownership model for every deposit, automatic adoption of third-party COE veins onto the map, input-fluid recipes, and a KubeJS binding.
+
+### Changed
+- **Unified deposit model — one owner, two generation variants.** Every deposit coedeposits tracks is now owned by us identically: we write its `OreData`, persist it, prospect-scan it, render it, and find it. `placement` is no longer "who owns it" but only *where it's placed* — `managed` (our multi-chunk Perlin blob) or `coe` (Create Ore Excavation's own spread). This collapses the old dual-ownership split that caused COE-placement deposits to behave inconsistently (depletion/regenerate/finder edge cases).
+- **COE-placement veins are now prospect-scanned and findable.** Declared `placement: coe` types (and adopted ones, below) are pre-populated on the world map ahead of the player and restored by `/coedeposits regenerate`, exactly like managed deposits — no more having to stand almost on top of a COE vein for it to appear. The picker faithfully replays COE's own spread placement (priority order, structure-chunk match, jittered biome whitelist/blacklist) off-thread.
+
+### Added
+- **Auto-adopt foreign COE veins (compat).** Any COE vein recipe that has no coedeposits `deposit_type` of its own — e.g. from **Create Ore Excavation Plus**, the **CoE × Mekanism** datapack, **OreCompatCreate**, or any datapack — is adopted onto the world map under an implicit type: we take ownership of its OreData, track it, render it and find it like a declared deposit. Toggle with the new `auto_adopt_coe_veins` config (default **on**). Tooltip names for adopted veins are made readable (`createoreexcavation:ore_vein_type/redstone` → "Redstone").
+- **Input / coolant fluid on recipes (like the host mod).** Inline `drilling:` and `fluid:` blocks accept an optional `fluid_input` (`{fluid|tag, amount}`) — the fluid the machine **consumes** per cycle (COE's `drillingFluid`, recipe key `"fluid"`). Lets you express fluid-gated recipes such as the CoE × Mekanism datapack's Brine / Sulfuric-Acid drilling bonuses, or a coolant requirement. Editable in the in-game editor (both the Drilling and Fluid groups).
+- **KubeJS support — deposit types.** With KubeJS installed, define deposit types from `kubejs/startup_scripts` via the `CoeDeposits` binding: `CoeDeposits.add('mypack:ruby', { vein_recipes:[...], weight:80, distance:{min:2000,max:99999}, ... })`. The object is the standard `deposit_type` schema; scripted types merge between the datapack defaults and the `deposits.json` overlay. KubeJS is an optional dependency — the mod runs fine without it. (COE's own vein/drilling/extracting recipes remain scriptable through COE's KubeJS plugin.)
+
+### Notes
+- Auto-adopt and the unified model are most predictable on fresh chunks. Foreign COE veins already generated in old chunks (before this version) only appear once their chunk reloads or is re-prospected.
+
 ## 0.1.6-1
 
 ### Changed
