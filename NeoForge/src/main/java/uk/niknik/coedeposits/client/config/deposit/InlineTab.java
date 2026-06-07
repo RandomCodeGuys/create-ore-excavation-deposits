@@ -156,6 +156,35 @@ public final class InlineTab {
                 .controller(o -> DropdownStringControllerBuilder.create(o).values(DepositBindings.itemTagIds).allowAnyValue(true))
                 .build();
         drilling.option(drillTag);
+        Option<Boolean> drillFluidIn = Option.<Boolean>createBuilder()
+                .name(Component.literal("Requires input fluid"))
+                .description(OptionDescription.of(Component.literal("Make the drill CONSUME a fluid per cycle (COE drillingFluid) pumped into the machine. Off for normal drills.")))
+                .binding(d.drilling.hasFluidInput, () -> d.drilling.hasFluidInput, v -> d.drilling.hasFluidInput = v)
+                .addListener(DepositBindings.persistOnChange(v -> d.drilling.hasFluidInput = v))
+                .controller(o -> BooleanControllerBuilder.create(o).onOffFormatter().coloured(true))
+                .build();
+        drilling.option(drillFluidIn);
+        ButtonOption drillFluidPick = ButtonOption.createBuilder()
+                .name(Component.literal("Input fluid"))
+                .description(OptionDescription.of(Component.literal("Fluid consumed per cycle — opens a picker. For a fluid TAG, set it as #namespace:path by hand in deposits.json.")))
+                .text(Component.literal(DepositBindings.fluidLabel(d.drilling.fluidInput)))
+                .action((s, o) -> Minecraft.getInstance().setScreen(new FluidPickerScreen(
+                        s, d.drilling.fluidInput, picked -> {
+                            d.drilling.fluidInput = picked;
+                            d.drilling.hasFluidInput = true;
+                            DepositBindings.persist();
+                            Minecraft.getInstance().setScreen(DepositDetailScreen.create(d, back));
+                        })))
+                .build();
+        drilling.option(drillFluidPick);
+        Option<Integer> drillFluidAmt = Option.<Integer>createBuilder()
+                .name(Component.literal("Input fluid mB/cycle"))
+                .description(OptionDescription.of(Component.literal("Millibuckets of the input fluid consumed per drill cycle. Default 1000 (one bucket).")))
+                .binding(d.drilling.fluidInputAmount, () -> d.drilling.fluidInputAmount, v -> d.drilling.fluidInputAmount = v)
+                .addListener(DepositBindings.persistOnChange(v -> d.drilling.fluidInputAmount = v))
+                .controller(o -> IntegerFieldControllerBuilder.create(o).min(1).max(1_000_000))
+                .build();
+        drilling.option(drillFluidAmt);
         cat.group(drilling.build());
 
         ButtonOption outputs = ButtonOption.createBuilder()
@@ -220,6 +249,35 @@ public final class InlineTab {
                 .controller(o -> DropdownStringControllerBuilder.create(o).values(DepositBindings.itemTagIds).allowAnyValue(true))
                 .build();
         fluid.option(fluidDrillTag);
+        Option<Boolean> exFluidIn = Option.<Boolean>createBuilder()
+                .name(Component.literal("Requires input fluid"))
+                .description(OptionDescription.of(Component.literal("Make the extractor also CONSUME a fluid per cycle (COE drillingFluid), separate from the fluid it produces. Off for a plain extractor.")))
+                .binding(d.extracting.hasFluidInput, () -> d.extracting.hasFluidInput, v -> d.extracting.hasFluidInput = v)
+                .addListener(DepositBindings.persistOnChange(v -> d.extracting.hasFluidInput = v))
+                .controller(o -> BooleanControllerBuilder.create(o).onOffFormatter().coloured(true))
+                .build();
+        fluid.option(exFluidIn);
+        ButtonOption exFluidPick = ButtonOption.createBuilder()
+                .name(Component.literal("Input fluid"))
+                .description(OptionDescription.of(Component.literal("Fluid consumed per cycle — opens a picker. For a fluid TAG, set it as #namespace:path by hand in deposits.json.")))
+                .text(Component.literal(DepositBindings.fluidLabel(d.extracting.fluidInput)))
+                .action((s, o) -> Minecraft.getInstance().setScreen(new FluidPickerScreen(
+                        s, d.extracting.fluidInput, picked -> {
+                            d.extracting.fluidInput = picked;
+                            d.extracting.hasFluidInput = true;
+                            DepositBindings.persist();
+                            Minecraft.getInstance().setScreen(DepositDetailScreen.create(d, back));
+                        })))
+                .build();
+        fluid.option(exFluidPick);
+        Option<Integer> exFluidAmt = Option.<Integer>createBuilder()
+                .name(Component.literal("Input fluid mB/cycle"))
+                .description(OptionDescription.of(Component.literal("Millibuckets of the input fluid consumed per extraction cycle. Default 1000 (one bucket).")))
+                .binding(d.extracting.fluidInputAmount, () -> d.extracting.fluidInputAmount, v -> d.extracting.fluidInputAmount = v)
+                .addListener(DepositBindings.persistOnChange(v -> d.extracting.fluidInputAmount = v))
+                .controller(o -> IntegerFieldControllerBuilder.create(o).min(1).max(1_000_000))
+                .build();
+        fluid.option(exFluidAmt);
         cat.group(fluid.build());
 
         return cat.build();

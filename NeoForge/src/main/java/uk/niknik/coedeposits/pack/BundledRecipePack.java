@@ -410,6 +410,9 @@ public class BundledRecipePack extends AbstractPackResources {
                 drillSpec.has("ticks") ? drillSpec.get("ticks").getAsInt() : 100);
         out.addProperty("veinId", veinId.toString());
 
+        // Optional INPUT fluid the drill consumes per cycle (COE drillingFluid).
+        addFluidInput(out, drillSpec);
+
         return out.toString();
     }
 
@@ -455,7 +458,37 @@ public class BundledRecipePack extends AbstractPackResources {
                 fluidSpec.has("ticks") ? fluidSpec.get("ticks").getAsInt() : 20);
         out.addProperty("veinId", veinId.toString());
 
+        // Optional INPUT fluid the extractor consumes per cycle (COE drillingFluid),
+        // independent of the fluid it OUTPUTS above.
+        addFluidInput(out, fluidSpec);
+
         return out.toString();
+    }
+
+    /**
+     * Emit the optional COE {@code drillingFluid} input — recipe JSON key
+     * {@code "fluid"}, a NeoForge {@code SizedFluidIngredient} in nested form
+     * {@code {"ingredient": {"fluid"|"tag": id}, "amount": N}} — from our inline
+     * {@code fluid_input} sub-block ({@code {"fluid"|"tag": id, "amount": N}}).
+     * No-op when the block is absent or names neither a fluid nor a tag.
+     */
+    private static void addFluidInput(JsonObject out, JsonObject spec) {
+        if (!spec.has("fluid_input") || !spec.get("fluid_input").isJsonObject()) return;
+        JsonObject fi = spec.getAsJsonObject("fluid_input");
+        JsonObject ingredient = new JsonObject();
+        if (fi.has("tag") && fi.get("tag").isJsonPrimitive()) {
+            ingredient.addProperty("tag", fi.get("tag").getAsString());
+        } else if (fi.has("fluid") && fi.get("fluid").isJsonPrimitive()) {
+            ingredient.addProperty("fluid", fi.get("fluid").getAsString());
+        } else {
+            Coedeposits.LOGGER.warn(
+                    "[coedeposits] inline fluid_input names neither a 'fluid' nor a 'tag' — skipped");
+            return;
+        }
+        JsonObject fluid = new JsonObject();
+        fluid.add("ingredient", ingredient);
+        fluid.addProperty("amount", fi.has("amount") ? fi.get("amount").getAsInt() : 1000);
+        out.add("fluid", fluid);
     }
 
     /**

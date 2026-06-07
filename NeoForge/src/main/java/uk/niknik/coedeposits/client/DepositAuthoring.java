@@ -137,6 +137,11 @@ public final class DepositAuthoring {
         public int ticks = 100;
         public int stress = 256;
         public String drillTag = "";
+        /** Optional INPUT fluid the drill consumes (COE drillingFluid). */
+        public boolean hasFluidInput = false;
+        /** Fluid id, or {@code "#tag"} for a fluid tag. */
+        public String fluidInput = "";
+        public int fluidInputAmount = 1000;
     }
 
     /** Inline COE fluid-extraction spec — synthesised into an extracting recipe. */
@@ -146,6 +151,11 @@ public final class DepositAuthoring {
         public int ticks = 20;
         public int stress = 256;
         public String drillTag = "";
+        /** Optional INPUT fluid the extractor consumes (COE drillingFluid), separate from the output. */
+        public boolean hasFluidInput = false;
+        /** Fluid id, or {@code "#tag"} for a fluid tag. */
+        public String fluidInput = "";
+        public int fluidInputAmount = 1000;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -472,6 +482,12 @@ public final class DepositAuthoring {
             d.drilling.ticks = dr.ticks();
             d.drilling.stress = dr.stress();
             d.drilling.drillTag = dr.drillTag().map(ResourceLocation::toString).orElse("");
+            dr.fluidInput().ifPresent(fi -> {
+                d.drilling.hasFluidInput = true;
+                d.drilling.fluidInput = fi.fluid().map(ResourceLocation::toString)
+                        .orElse(fi.tag().map(tag -> "#" + tag).orElse(""));
+                d.drilling.fluidInputAmount = fi.amount();
+            });
         });
         t.extracting().ifPresent(ex -> {
             d.hasExtracting = true;
@@ -480,6 +496,12 @@ public final class DepositAuthoring {
             d.extracting.ticks = ex.ticks();
             d.extracting.stress = ex.stress();
             d.extracting.drillTag = ex.drillTag().map(ResourceLocation::toString).orElse("");
+            ex.fluidInput().ifPresent(fi -> {
+                d.extracting.hasFluidInput = true;
+                d.extracting.fluidInput = fi.fluid().map(ResourceLocation::toString)
+                        .orElse(fi.tag().map(tag -> "#" + tag).orElse(""));
+                d.extracting.fluidInputAmount = fi.amount();
+            });
         });
         return d;
     }
@@ -540,7 +562,8 @@ public final class DepositAuthoring {
             Optional<ResourceLocation> drillTag = dr.drillTag.isBlank()
                     ? Optional.empty()
                     : Optional.ofNullable(ResourceLocation.tryParse(dr.drillTag.trim()));
-            drilling = Optional.of(new DepositType.DrillingSpec(outs, dr.ticks, dr.stress, drillTag));
+            drilling = Optional.of(new DepositType.DrillingSpec(outs, dr.ticks, dr.stress, drillTag,
+                    fluidInputOf(dr.hasFluidInput, dr.fluidInput, dr.fluidInputAmount)));
         }
 
         Optional<DepositType.ExtractingSpec> extracting = Optional.empty();
@@ -553,7 +576,8 @@ public final class DepositAuthoring {
                         ? Optional.empty()
                         : Optional.ofNullable(ResourceLocation.tryParse(ex.drillTag.trim()));
                 extracting = Optional.of(new DepositType.ExtractingSpec(
-                        fluid, Math.max(1, ex.amount), Math.max(1, ex.ticks), Math.max(1, ex.stress), exDrillTag));
+                        fluid, Math.max(1, ex.amount), Math.max(1, ex.ticks), Math.max(1, ex.stress), exDrillTag,
+                        fluidInputOf(ex.hasFluidInput, ex.fluidInput, ex.fluidInputAmount)));
             }
         }
 
@@ -576,5 +600,24 @@ public final class DepositAuthoring {
                 vein,
                 drilling,
                 extracting);
+    }
+
+    /**
+     * Build an optional {@link DepositType.FluidInputSpec} from editor fields:
+     * a blank/disabled input yields empty; a {@code "#..."} value is a fluid tag,
+     * anything else a fluid id. Amount floored at 1.
+     */
+    private static Optional<DepositType.FluidInputSpec> fluidInputOf(boolean has, String s, int amount) {
+        if (!has || s == null || s.isBlank()) return Optional.empty();
+        String t = s.trim();
+        int amt = Math.max(1, amount);
+        if (t.startsWith("#")) {
+            ResourceLocation tag = ResourceLocation.tryParse(t.substring(1).trim());
+            return tag == null ? Optional.empty()
+                    : Optional.of(new DepositType.FluidInputSpec(Optional.empty(), Optional.of(tag), amt));
+        }
+        ResourceLocation fluid = ResourceLocation.tryParse(t);
+        if (fluid == null || fluid.getPath().isEmpty()) return Optional.empty();
+        return Optional.of(new DepositType.FluidInputSpec(Optional.of(fluid), Optional.empty(), amt));
     }
 }

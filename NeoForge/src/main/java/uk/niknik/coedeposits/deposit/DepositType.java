@@ -243,7 +243,8 @@ public record DepositType(
             List<DrillOutputSpec> outputs,
             int ticks,
             int stress,
-            Optional<ResourceLocation> drillTag) {
+            Optional<ResourceLocation> drillTag,
+            Optional<FluidInputSpec> fluidInput) {
 
         private static final ResourceLocation DEFAULT_DRILL_TAG =
                 ResourceLocation.fromNamespaceAndPath("createoreexcavation", "drills");
@@ -256,8 +257,37 @@ public record DepositType(
                 Codec.list(DrillOutputSpec.CODEC).fieldOf("outputs").forGetter(DrillingSpec::outputs),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("ticks", 100).forGetter(DrillingSpec::ticks),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("stress", 256).forGetter(DrillingSpec::stress),
-                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(DrillingSpec::drillTag)
+                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(DrillingSpec::drillTag),
+                FluidInputSpec.CODEC.optionalFieldOf("fluid_input").forGetter(DrillingSpec::fluidInput)
         ).apply(b, DrillingSpec::new));
+    }
+
+    /**
+     * Optional <b>input</b> fluid a drilling / extracting recipe consumes per
+     * cycle — the COE {@code drillingFluid} (recipe JSON key {@code "fluid"}, a
+     * NeoForge {@code SizedFluidIngredient}). Distinct from {@link ExtractingSpec}'s
+     * fluid <i>output</i>. This is how the host mod and add-ons gate a recipe
+     * behind a pumped-in fluid (e.g. the CoE × Mekanism datapack's Brine /
+     * Sulfuric-Acid drilling bonuses, or a coolant requirement).
+     *
+     * <p>Specify exactly one of {@code fluid} (a fluid id) or {@code tag} (a
+     * fluid tag). {@code amount} is millibuckets consumed per cycle (default
+     * 1000 = one bucket).
+     *
+     * @param fluid   single fluid id, e.g. {@code minecraft:water}
+     * @param tag     fluid tag id (without the leading {@code #}), e.g. {@code c:lava}
+     * @param amount  mB consumed per cycle (default 1000)
+     */
+    public record FluidInputSpec(
+            Optional<ResourceLocation> fluid,
+            Optional<ResourceLocation> tag,
+            int amount) {
+
+        public static final Codec<FluidInputSpec> CODEC = RecordCodecBuilder.create(b -> b.group(
+                ResourceLocation.CODEC.optionalFieldOf("fluid").forGetter(FluidInputSpec::fluid),
+                ResourceLocation.CODEC.optionalFieldOf("tag").forGetter(FluidInputSpec::tag),
+                ExtraCodecs.POSITIVE_INT.optionalFieldOf("amount", 1000).forGetter(FluidInputSpec::amount)
+        ).apply(b, FluidInputSpec::new));
     }
 
     /**
@@ -303,14 +333,16 @@ public record DepositType(
             int amount,
             int ticks,
             int stress,
-            Optional<ResourceLocation> drillTag) {
+            Optional<ResourceLocation> drillTag,
+            Optional<FluidInputSpec> fluidInput) {
 
         public static final Codec<ExtractingSpec> CODEC = RecordCodecBuilder.create(b -> b.group(
                 ResourceLocation.CODEC.fieldOf("fluid").forGetter(ExtractingSpec::fluid),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("amount", 500).forGetter(ExtractingSpec::amount),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("ticks", 20).forGetter(ExtractingSpec::ticks),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("stress", 256).forGetter(ExtractingSpec::stress),
-                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(ExtractingSpec::drillTag)
+                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(ExtractingSpec::drillTag),
+                FluidInputSpec.CODEC.optionalFieldOf("fluid_input").forGetter(ExtractingSpec::fluidInput)
         ).apply(b, ExtractingSpec::new));
     }
 
