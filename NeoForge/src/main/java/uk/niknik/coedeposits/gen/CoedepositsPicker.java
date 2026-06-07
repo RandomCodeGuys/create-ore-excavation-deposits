@@ -356,9 +356,33 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
         }
     }
 
-    /** Package-private recipe lookup helper used by ProspectScanner and picker. */
+    /** Cached handle to {@code OreData.extractedAmount} (no public getter). */
+    private static java.lang.reflect.Field extractedAmountField;
+
+    /**
+     * Reflectively read {@code OreData.extractedAmount} (COE exposes no getter).
+     * Used by the depletion sweep's self-heal to tell a never-applied deposit
+     * chunk (extracted == 0) from a genuinely mined-out one (extracted &gt; 0).
+     * On reflection failure returns {@link Long#MAX_VALUE} so the caller treats
+     * the chunk as "extracted" and does NOT refill it (fail safe, never re-fills).
+     */
+    public static long getExtractedAmount(OreData od) {
+        try {
+            java.lang.reflect.Field f = extractedAmountField;
+            if (f == null) {
+                f = OreData.class.getDeclaredField("extractedAmount");
+                f.setAccessible(true);
+                extractedAmountField = f;
+            }
+            return f.getLong(od);
+        } catch (ReflectiveOperationException e) {
+            return Long.MAX_VALUE;
+        }
+    }
+
+    /** Recipe lookup helper used by ProspectScanner, the depletion sweep, and the picker. */
     @SuppressWarnings("unchecked")
-    static VeinRecipe resolveRecipeValue(ServerLevel lvl, ResourceLocation id) {
+    public static VeinRecipe resolveRecipeValue(ServerLevel lvl, ResourceLocation id) {
         return lvl.getRecipeManager().byKey(id)
                 .filter(r -> r.value() instanceof VeinRecipe)
                 .map(r -> ((RecipeHolder<VeinRecipe>) r).value())

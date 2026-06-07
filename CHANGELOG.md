@@ -15,8 +15,11 @@ A unification + compatibility release: one ownership model for every deposit, au
 - **Input / coolant fluid on recipes (like the host mod).** Inline `drilling:` and `fluid:` blocks accept an optional `fluid_input` (`{fluid|tag, amount}`) — the fluid the machine **consumes** per cycle (COE's `drillingFluid`, recipe key `"fluid"`). Lets you express fluid-gated recipes such as the CoE × Mekanism datapack's Brine / Sulfuric-Acid drilling bonuses, or a coolant requirement. Editable in the in-game editor (both the Drilling and Fluid groups).
 - **KubeJS support — deposit types.** With KubeJS installed, define deposit types from `kubejs/startup_scripts` via the `CoeDeposits` binding: `CoeDeposits.add('mypack:ruby', { vein_recipes:[...], weight:80, distance:{min:2000,max:99999}, ... })`. The object is the standard `deposit_type` schema; scripted types merge between the datapack defaults and the `deposits.json` overlay. KubeJS is an optional dependency — the mod runs fine without it. (COE's own vein/drilling/extracting recipes remain scriptable through COE's KubeJS plugin.)
 
+### Fixed
+- **Deposits placed over already-explored terrain no longer read "depleted".** COE's `OreData.populate` runs once per chunk, so a deposit placed by `/coedeposits regenerate` or the prospect scanner over a chunk that was generated *before* the deposit existed never got its OreData applied (populate doesn't re-run). The depletion sweep now self-heals such chunks (recipe missing **and** nothing extracted → re-apply) while leaving genuinely mined-out chunks alone. A chunk whose vein recipe is set but unresolvable now reads "vein recipe not loaded" instead of a misleading "depleted".
+
 ### Notes
-- Auto-adopt and the unified model are most predictable on fresh chunks. Foreign COE veins already generated in old chunks (before this version) only appear once their chunk reloads or is re-prospected.
+- Auto-adopt and the unified model are most predictable on fresh chunks. Foreign COE veins already generated in old chunks (before this version) appear once their chunk loads (the self-heal applies them within ~1s) or after a re-prospect.
 
 ## 0.1.6-1
 
