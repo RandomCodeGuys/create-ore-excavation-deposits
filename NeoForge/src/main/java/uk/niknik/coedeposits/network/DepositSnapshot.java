@@ -32,6 +32,7 @@ import uk.niknik.coedeposits.store.DepositSavedData;
 /**
  * Wire-friendly snapshot of a {@link Deposit}. {@code chunkRemaining} is
  * parallel to {@code packedChunks}: same length, same order. Sentinel values:
+ *   -4 — vein recipe not loaded (recipe id set but unresolvable — misconfig)
  *   -3 — chunk is a filler (no OreData by design; renders as tailings)
  *   -2 — chunk unloaded server-side, remaining unknown
  *   -1 — vein depleted in this chunk
@@ -290,7 +291,13 @@ public record DepositSnapshot(
         if (chunk == null) return -2L;
         OreData od = OreDataAttachment.getData(chunk);
         RecipeHolder<VeinRecipe> rh = od.getRecipe(rm);
-        if (rh == null) return -1L;
+        if (rh == null) {
+            // -4: a recipe id is set but doesn't resolve — the vein recipe isn't
+            // loaded (datapack/config removed it, or a referenced id is wrong).
+            // Distinct from -1 (no recipe id at all = genuinely cleared/depleted),
+            // so a misconfig reads "recipe not loaded" instead of "depleted".
+            return od.getRecipeId() != null ? -4L : -1L;
+        }
         return od.getResourcesRemaining(rh.value());
     }
 

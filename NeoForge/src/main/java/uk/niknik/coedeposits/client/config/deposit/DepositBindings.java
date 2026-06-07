@@ -181,6 +181,17 @@ public final class DepositBindings {
             for (DepositAuthoring.RecipeEntry e : d.veinRecipes) {
                 if (e.recipe != null && !e.recipe.isBlank()) referenced.add(e.recipe.trim());
             }
+            if (d.veinRecipeInfinite != null && !d.veinRecipeInfinite.isBlank()) {
+                referenced.add(d.veinRecipeInfinite.trim());
+            }
+            // Inline-vein types synthesise a <id>_vein recipe; the editor draft's
+            // veinRecipes is empty for them (load() doesn't bind inline veins), so
+            // add it explicitly — otherwise a type's own synthesised vein would
+            // wrongly appear as an adoptable foreign vein.
+            if (d.hasVein && d.id != null && !d.id.isBlank()) {
+                ResourceLocation rid = ResourceLocation.tryParse(d.id.trim());
+                if (rid != null) referenced.add(rid.getNamespace() + ":" + rid.getPath() + "_vein");
+            }
         }
         List<String> out = new ArrayList<>();
         for (String v : coeVeinIds) {

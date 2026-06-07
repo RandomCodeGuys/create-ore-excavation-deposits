@@ -42,6 +42,7 @@
   "coedeposits.tooltip.chunk_infinite": "В этом чанке: бесконечно",
   "coedeposits.tooltip.chunk_unknown": "В этом чанке: не загружен на сервере",
   "coedeposits.tooltip.chunk_filler": "В этом чанке: пустая порода — руды нет",
+  "coedeposits.tooltip.chunk_missing": "В этом чанке: рецепт жилы не загружен (проверьте датапак/конфиг)",
 
   "coedeposits.recipe.coedeposits.coal_vein": "уголь",
   "coedeposits.recipe.coedeposits.iron_vein": "железо",

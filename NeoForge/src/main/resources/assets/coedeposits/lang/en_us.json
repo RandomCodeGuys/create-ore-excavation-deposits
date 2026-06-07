@@ -42,6 +42,7 @@
   "coedeposits.tooltip.chunk_infinite": "This chunk: infinite",
   "coedeposits.tooltip.chunk_unknown": "This chunk: not loaded server-side",
   "coedeposits.tooltip.chunk_filler": "This chunk: tailings — no ore",
+  "coedeposits.tooltip.chunk_missing": "This chunk: vein recipe not loaded (check datapack/config)",
 
   "coedeposits.recipe.coedeposits.coal_vein": "coal",
   "coedeposits.recipe.coedeposits.iron_vein": "iron",

@@ -373,7 +373,8 @@ public final class WorldMapDepositRenderer {
                 ? d.chunkRecipeIndex().get(hoveredIdx) : -1;
 
         MutableComponent remainLine;
-        if (remaining == -3L)      remainLine = Component.translatable("coedeposits.tooltip.chunk_filler");
+        if (remaining == -4L)      remainLine = Component.translatable("coedeposits.tooltip.chunk_missing");
+        else if (remaining == -3L) remainLine = Component.translatable("coedeposits.tooltip.chunk_filler");
         else if (remaining == -2L) remainLine = Component.translatable("coedeposits.tooltip.chunk_unknown");
         else if (remaining == -1L) remainLine = Component.translatable("coedeposits.tooltip.chunk_depleted");
         else if (remaining == 0L)  remainLine = Component.translatable("coedeposits.tooltip.chunk_infinite");
@@ -401,7 +402,8 @@ public final class WorldMapDepositRenderer {
         }
         // Colour-code by state — players associate red=bad, green=good
         // intuitively, so the route maps cleanly to deposit health.
-        if      (remaining == -3L) remainLine.withStyle(ChatFormatting.GRAY);
+        if      (remaining == -4L) remainLine.withStyle(ChatFormatting.RED);
+        else if (remaining == -3L) remainLine.withStyle(ChatFormatting.GRAY);
         else if (remaining == -1L) remainLine.withStyle(ChatFormatting.RED);
         else if (remaining == -2L) remainLine.withStyle(ChatFormatting.DARK_GRAY);
         else if (remaining == 0L)  remainLine.withStyle(ChatFormatting.AQUA);
@@ -529,6 +531,7 @@ public final class WorldMapDepositRenderer {
      * mostly-depleted chunks, 0.05 for fully depleted (still visible as ghost).
      */
     private static float fadeFor(long remaining, long initial) {
+        if (remaining == -4L) return 0.25f;                  // recipe not loaded (misconfig) — muted
         if (remaining == -3L) return 0.55f;                  // filler / tailings — visible but muted
         if (remaining == -1L) return 0.05f;                  // depleted
         if (remaining == -2L) return 1.0f;                   // unknown
