@@ -213,11 +213,12 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             return null;
         }
 
-        // ── Phase 3: COE delegation ─────────────────────────────────────────
-        // Skipped entirely when no placement=COE entry exists in the registry —
-        // keeps default behaviour identical to pre-delegation versions for
-        // users who never opt in to COE-tracked types.
-        if (!hasAnyCoePlacementType()) {
+        // ── Phase 3: COE delegation + adoption ──────────────────────────────
+        // Run COE's own placement when EITHER a declared placement=COE type
+        // exists OR auto-adopt is on (so foreign add-on/datapack veins can be
+        // taken onto our map). Skipped entirely otherwise — pure-managed worlds
+        // keep behaviour identical to pre-delegation versions.
+        if (!hasAnyCoePlacementType() && !Config.AUTO_ADOPT_COE_VEINS.get()) {
             return null;
         }
 
@@ -237,13 +238,24 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             return null;
         }
 
-        // Step 3c: COE-tracked path. Find the deposit-type whose vein_recipe
-        // matches COE's choice, take ownership of the OreData and persist the
-        // single-chunk deposit so it shows on the map. Honour the per-type
-        // dimensions allow-list — a COE entry restricted to specific dims
-        // won't be tracked outside them.
+        // Step 3c: adoption path. Resolve the type that owns COE's chosen vein —
+        // a declared placement=COE type, or (when auto-adopt is on) an implicit
+        // type keyed by the vein id. Either way we take ownership of the OreData
+        // and persist a single-chunk deposit so it shows on the map. Honour the
+        // per-type dimensions allow-list — a COE entry restricted to specific
+        // dims won't be tracked outside them (implicit types are dim-agnostic).
         ResourceLocation coeTypeId = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(chosenVein);
-        DepositType coeType = coeTypeId != null ? Coedeposits.DEPOSIT_TYPES.get(coeTypeId) : null;
+        DepositType coeType;
+        if (coeTypeId != null) {
+            coeType = Coedeposits.DEPOSIT_TYPES.get(coeTypeId);
+        } else if (Config.AUTO_ADOPT_COE_VEINS.get()) {
+            // Foreign vein (add-on / datapack) with no declared deposit_type —
+            // adopt it under an implicit COE type whose id IS the vein id.
+            coeTypeId = chosenVein;
+            coeType = Coedeposits.DEPOSIT_TYPES.adoptImplicit(chosenVein);
+        } else {
+            coeType = null;
+        }
         if (coeType != null && coeType.matchesDimension(dim)) {
             // Roll a deterministic randomMul so the same chunk produces the
             // same amount across server restarts (otherwise rejoining would

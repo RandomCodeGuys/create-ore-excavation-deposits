@@ -234,6 +234,37 @@ public class Config {
                     o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
 
     // ═══════════════════════════════════════════════════════════════════════
+    // Compat — how we treat COE vein recipes that have no coedeposits
+    // deposit_type of their own (e.g. those added by Create Ore Excavation
+    // Plus, the CoE×Mekanism datapack, OreCompatCreate, or any third-party
+    // datapack). With one unified ownership model the only question is whether
+    // such "foreign" veins are adopted onto our map or left as plain COE.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * When COE's own spread generator would place a vein recipe that no
+     * coedeposits {@code deposit_type} declares, adopt it: synthesise an
+     * implicit COE-placement type, take ownership of its OreData, persist a
+     * single-chunk {@link uk.niknik.coedeposits.deposit.Deposit}, and render it
+     * on the world map exactly like a declared COE-placement deposit. This is
+     * what makes add-ons that ship their own COE veins (Create Ore Excavation
+     * Plus, CoE×Mekanism, OreCompatCreate, …) show up on the overlay without
+     * the admin authoring a deposit_type for each.
+     *
+     * <p>Turn OFF to keep foreign veins as pure vanilla COE — they still
+     * generate, but stay invisible to our map/finder/lifecycle. Recipes that a
+     * MANAGED type already owns are never adopted here (they spawn only through
+     * the blob algorithm); this only affects veins COE itself would place.
+     */
+    public static final ModConfigSpec.BooleanValue AUTO_ADOPT_COE_VEINS = BUILDER
+            .comment("Adopt COE vein recipes that have no coedeposits deposit_type (e.g. from",
+                    "Create Ore Excavation Plus, the CoE x Mekanism datapack, OreCompatCreate, or",
+                    "any datapack) onto the world map: we synthesise an implicit COE-placement type,",
+                    "own its OreData and track it like a declared deposit. OFF = foreign veins stay",
+                    "pure vanilla COE (generate but invisible to our map/finder). Default ON.")
+            .define("auto_adopt_coe_veins", true);
+
+    // ═══════════════════════════════════════════════════════════════════════
     // Logging toggles — granular on/off for each log category. Bypasses
     // log4j2 level filtering for our package, so admins can enable specific
     // event types without flipping the whole logger to DEBUG. Defaults split

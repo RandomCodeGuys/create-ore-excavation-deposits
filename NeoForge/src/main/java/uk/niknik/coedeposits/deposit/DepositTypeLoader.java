@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
@@ -98,6 +99,18 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     /** Cached recipe-id → COE-mode type id, used by the picker's COE delegation branch. */
     private volatile Map<ResourceLocation, ResourceLocation> byCoeVeinRecipe = Map.of();
 
+    /**
+     * Lazily-built implicit COE-placement types for vein recipes that no
+     * declared {@link DepositType} owns — the {@code auto_adopt_coe_veins}
+     * path (add-on / datapack veins). Keyed by, and id-equal to, the vein
+     * recipe id, so a {@link Deposit} adopting one stores that vein id as its
+     * {@code typeId} and {@link #get} resolves it transparently. Cleared on
+     * every {@link #apply} (a reload may now declare the type, or the recipe
+     * may be gone). Concurrent because the picker can adopt on a chunk-load
+     * thread while another chunk loads.
+     */
+    private final Map<ResourceLocation, DepositType> implicitTypes = new ConcurrentHashMap<>();
+
     /** Off-thread reload result: merged registry plus per-layer counts for logging. */
     public record Prepared(Map<ResourceLocation, DepositType> types, int datapackCount, int overlayCount) {}
 
@@ -124,6 +137,10 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     protected void apply(Prepared prepared, ResourceManager mgr, ProfilerFiller profiler) {
         types = Map.copyOf(prepared.types());
         rebuildIndexes(prepared.types());
+        // Drop adopted implicit types — a reload may now declare a real type for
+        // a vein, change its recipe, or remove it; stale implicit copies would
+        // otherwise shadow the declared one in get().
+        implicitTypes.clear();
         if (Config.LOG_LIFECYCLE.get()) {
             Coedeposits.LOGGER.info(
                     "[coedeposits] loaded {} deposit types ({} datapack + {} config-overlay override(s)): {}",
@@ -308,9 +325,46 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
         return types;
     }
 
-    /** Lookup a single type by id. {@code null} if not loaded (parse failure or missing entry). */
+    /**
+     * Lookup a single type by id. Falls back to the implicit (auto-adopted)
+     * type table so a {@link Deposit} that adopted a foreign COE vein — whose
+     * {@code typeId} is the vein id — still resolves its type for snapshots,
+     * the finder, refill, depletion, etc. {@code null} only if neither a
+     * declared nor an adopted type exists for the id.
+     */
     public DepositType get(ResourceLocation id) {
-        return types.get(id);
+        DepositType t = types.get(id);
+        return t != null ? t : implicitTypes.get(id);
+    }
+
+    /**
+     * Get (or lazily build) the implicit COE-placement type for a vein recipe
+     * that no declared type owns — the {@code auto_adopt_coe_veins} path. The
+     * type's id is the vein id itself; it carries a single-recipe pool, COE
+     * placement, single-chunk size and otherwise inert defaults (the OreData
+     * amount/finite all come from the vein recipe). Idempotent + concurrent.
+     */
+    public DepositType adoptImplicit(ResourceLocation veinId) {
+        return implicitTypes.computeIfAbsent(veinId, DepositTypeLoader::buildImplicit);
+    }
+
+    /** Construct the default implicit COE type for {@code veinId}. See {@link #adoptImplicit}. */
+    private static DepositType buildImplicit(ResourceLocation veinId) {
+        return new DepositType(
+                List.of(new DepositType.WeightedRecipe(veinId, 1)),
+                Optional.empty(),                                   // veinRecipeInfinite
+                List.of(),                                          // fillers
+                0.0,                                                // replenishRatePerHour
+                DepositType.Placement.COE,                          // generation: COE spread
+                new DepositType.IntRange(0, Integer.MAX_VALUE),     // distance: any
+                new DepositType.IntRange(1, 1),                     // size: single chunk
+                new DepositType.PerChunkUnits(0L, Optional.of(0L)), // per-chunk units: unused for COE
+                0,                                                  // weight: inert in the managed roll
+                Optional.empty(),                                   // map_color → typeId-hash fallback
+                List.of(),                                          // biome_filter: any
+                Optional.empty(),                                   // reveal → global default
+                List.of(),                                          // dimensions: any
+                Optional.empty(), Optional.empty(), Optional.empty()); // no inline vein/drilling/fluid
     }
 
     /**
