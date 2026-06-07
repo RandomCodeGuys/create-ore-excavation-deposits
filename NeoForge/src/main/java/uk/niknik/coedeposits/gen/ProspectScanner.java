@@ -160,8 +160,11 @@ public final class ProspectScanner {
         for (RecipeHolder<VeinRecipe> h : all) {
             ResourceLocation veinId = h.id();
             boolean isManaged = managed.contains(veinId);
+            // Disabled veins are suppressed like managed ones (adoptable=false →
+            // dryRunCoeVein returns null on a match, so nothing generates there).
+            boolean disabled = Config.isVeinDisabled(veinId);
             ResourceLocation declaredType = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(veinId);
-            boolean adoptable = !isManaged && (declaredType != null || autoAdopt);
+            boolean adoptable = !isManaged && !disabled && (declaredType != null || autoAdopt);
             ResourceLocation typeId = declaredType != null ? declaredType : veinId;
             // Foreign adoptable vein (no declared type): register its implicit
             // type NOW (server thread) so materialize()'s DEPOSIT_TYPES.get(typeId)

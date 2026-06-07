@@ -12,6 +12,7 @@ import net.minecraft.network.chat.Component;
 import dev.isxander.yacl3.api.ButtonOption;
 import dev.isxander.yacl3.api.ConfigCategory;
 
+import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.client.DepositAuthoring.Draft;
 import uk.niknik.coedeposits.client.DepositRowController;
 
@@ -99,19 +100,46 @@ public final class DepositListScreen {
                     Component.literal("§8— adopted: COE veins from other mods/datapacks (no type yet) —"),
                     List.of()));
             for (String veinId : adoptable) {
+                boolean disabled = Config.DISABLED_VEINS.get().contains(veinId);
+                String suffix = disabled ? "  §c(disabled)§r" : "  §6(adopted)§r";
+                List<DepositRowController.Action> acts = new ArrayList<>();
+                if (disabled) {
+                    // Suppressed via Disable — only offer re-enable.
+                    acts.add(new DepositRowController.Action(
+                            Component.literal("✔ Enable"),
+                            () -> { setVeinDisabled(veinId, false); mc.setScreen(rebuild.get()); }));
+                } else {
+                    // Edit → promote to a placement=coe type you control (same as
+                    // the old Customize). Disable → suppress the vein entirely.
+                    acts.add(new DepositRowController.Action(
+                            Component.literal("Edit →"),
+                            () -> {
+                                Draft d = DepositBindings.adoptDraft(veinId);
+                                DepositBindings.drafts.add(0, d);
+                                DepositBindings.persist();
+                                mc.setScreen(DepositDetailScreen.create(d, rebuild.get()));
+                            }));
+                    acts.add(new DepositRowController.Action(
+                            Component.literal("⊘ Disable"),
+                            () -> { setVeinDisabled(veinId, true); mc.setScreen(rebuild.get()); }));
+                }
                 cat.option(DepositRowController.row(
-                        Component.literal(DepositBindings.shortVeinLabel(veinId) + "  §6(adopted)§r"),
-                        List.of(new DepositRowController.Action(
-                                Component.literal("✎ Customize"),
-                                () -> {
-                                    Draft d = DepositBindings.adoptDraft(veinId);
-                                    DepositBindings.drafts.add(0, d);
-                                    DepositBindings.persist();
-                                    mc.setScreen(DepositDetailScreen.create(d, rebuild.get()));
-                                }))));
+                        Component.literal(DepositBindings.shortVeinLabel(veinId) + suffix), acts));
             }
         }
 
         return cat.build();
+    }
+
+    /** Add or remove a vein id in the {@link Config#DISABLED_VEINS} suppression list and flush to disk. */
+    private static void setVeinDisabled(String veinId, boolean disabled) {
+        List<String> cur = new ArrayList<>(Config.DISABLED_VEINS.get());
+        if (disabled) {
+            if (!cur.contains(veinId)) cur.add(veinId);
+        } else {
+            cur.remove(veinId);
+        }
+        Config.DISABLED_VEINS.set(cur);
+        Config.SPEC.save();
     }
 }

@@ -373,6 +373,7 @@ The object is the exact `deposit_type` schema documented above. Scripted types m
 | `discovery_radius_blocks` | 24 | Trigger radius for `ON_DISCOVERY` — the player must come this close to any chunk of the deposit. |
 | `enabled_dimensions` | `[overworld, the_nether, the_end]` | Dimensions where the mod is active. Others fall through to vanilla COE behaviour. |
 | `auto_adopt_coe_veins` | `true` | Adopt COE vein recipes that have no coedeposits `deposit_type` (from add-ons / datapacks) onto the world map: we own their OreData, track and render them like declared deposits. Off = they stay pure vanilla COE (generate but invisible to our map/finder). |
+| `disabled_veins` | `[]` | COE vein recipe ids to **suppress** entirely — they won't generate or be adopted. Managed by the in-game editor (Deposits → adopted → Disable), e.g. `createoreexcavation:ore_vein_type/water`. (Managed coedeposits ores are turned off by disabling their `deposit_type` instead.) |
 
 ### Client-side — `coedeposits-client.toml`
 

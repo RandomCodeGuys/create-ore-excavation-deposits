@@ -264,6 +264,23 @@ public class Config {
                     "pure vanilla COE (generate but invisible to our map/finder). Default ON.")
             .define("auto_adopt_coe_veins", true);
 
+    /**
+     * COE vein recipe ids to suppress entirely — they won't generate and won't
+     * be adopted. The picker returns {@code null} when COE's spread would place
+     * one, so the vein simply doesn't appear. Managed coedeposits ores are turned
+     * off by disabling their {@code deposit_type} instead; this list is for the
+     * foreign / adopted COE veins surfaced in the in-game editor's "adopted"
+     * section (Disable button). Edited there or by hand.
+     */
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> DISABLED_VEINS = BUILDER
+            .comment("COE vein recipe ids to suppress — they won't generate or be adopted.",
+                    "Managed coedeposits ores are turned off by disabling their deposit_type instead.",
+                    "Format: list of vein recipe ids, e.g. \"createoreexcavation:ore_vein_type/water\".",
+                    "Usually managed via the in-game editor (Deposits tab -> adopted -> Disable).")
+            .defineListAllowEmpty("disabled_veins", List.of(),
+                    () -> "createoreexcavation:ore_vein_type/example",
+                    o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
+
     // ═══════════════════════════════════════════════════════════════════════
     // Logging toggles — granular on/off for each log category. Bypasses
     // log4j2 level filtering for our package, so admins can enable specific
@@ -349,5 +366,11 @@ public class Config {
     /** Convenience: is this dimension key in the configured allowlist? */
     public static boolean isDimensionEnabled(ResourceLocation dim) {
         return enabledDimensions().contains(dim);
+    }
+
+    /** True when a COE vein recipe id is in the {@link #DISABLED_VEINS} suppression list. */
+    public static boolean isVeinDisabled(ResourceLocation veinId) {
+        List<? extends String> list = DISABLED_VEINS.get();
+        return !list.isEmpty() && list.contains(veinId.toString());
     }
 }

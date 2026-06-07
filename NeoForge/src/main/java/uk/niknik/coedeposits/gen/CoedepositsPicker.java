@@ -246,6 +246,12 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             return null;
         }
 
+        // Step 3b.5: suppressed vein — admin disabled it (editor "Disable" or the
+        // disabled_veins config). Return null so COE doesn't place it at all.
+        if (Config.isVeinDisabled(chosenVein)) {
+            return null;
+        }
+
         // Step 3c: adoption path. Resolve the type that owns COE's chosen vein —
         // a declared placement=COE type, or (when auto-adopt is on) an implicit
         // type keyed by the vein id. Either way we take ownership of the OreData
