@@ -47,8 +47,11 @@ import uk.niknik.coedeposits.store.DepositSavedData;
 public final class PlayerRoamProspectListener {
     private PlayerRoamProspectListener() {}
 
-    /** How often we re-check player positions for scan-enqueue + ON_DISCOVERY reveal — 200 ticks = 10 seconds. */
+    /** How often we re-check player positions for the (expensive) prospect scan-enqueue — 200 ticks = 10 seconds. */
     private static final int CHECK_INTERVAL_TICKS = 200;
+
+    /** How often we sweep ON_DISCOVERY reveals — 20 ticks ≈ 1s, so walking into a deposit reveals it promptly (cheap: O(deposits), short-circuits on already-revealed / wrong-mode). */
+    private static final int DISCOVERY_SWEEP_TICKS = 20;
 
     /** Per-player last position where we enqueued a scan; reset when player rejoins. */
     private static final Map<UUID, BlockPos> lastScanCenter = new HashMap<>();
@@ -74,7 +77,11 @@ public final class PlayerRoamProspectListener {
             ProspectScanQueue.INSTANCE.tickMaterialize(lvl, budget);
         }
 
-        if (server.getTickCount() % CHECK_INTERVAL_TICKS != 0) return;
+        long tick = server.getTickCount();
+        boolean doScan = tick % CHECK_INTERVAL_TICKS == 0;
+        boolean doDiscovery = tick % DISCOVERY_SWEEP_TICKS == 0;
+        if (!doScan && !doDiscovery) return;
+
         int prospectRadius = Config.PROSPECT_RADIUS.get();
         int discoveryRadius = Config.DISCOVERY_RADIUS_BLOCKS.get();
         long discoveryRadiusSq = (long) discoveryRadius * discoveryRadius;
@@ -88,7 +95,8 @@ public final class PlayerRoamProspectListener {
             BlockPos current = p.blockPosition();
 
             // Job 1: incremental prospect scan (enqueue — actual work is async).
-            if (prospectRadius > 0) {
+            // Expensive, so kept on the slow 200-tick cadence.
+            if (doScan && prospectRadius > 0) {
                 BlockPos last = lastScanCenter.get(p.getUUID());
                 if (last == null || distSq(last, current) > prospectTriggerSq) {
                     ProspectScanQueue.INSTANCE.enqueue(lvl, current, prospectRadius);
@@ -96,8 +104,11 @@ public final class PlayerRoamProspectListener {
                 }
             }
 
-            // Job 2: ON_DISCOVERY reveal sweep
-            tryRevealDiscoveryNear(lvl, p, current, discoveryRadiusSq);
+            // Job 2: ON_DISCOVERY reveal sweep — fast cadence so "walk into it"
+            // reveals within ~1s.
+            if (doDiscovery) {
+                tryRevealDiscoveryNear(lvl, p, current, discoveryRadiusSq);
+            }
         }
     }
 

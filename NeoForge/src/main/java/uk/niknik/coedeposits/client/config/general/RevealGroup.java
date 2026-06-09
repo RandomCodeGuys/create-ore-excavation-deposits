@@ -24,7 +24,12 @@ public final class RevealGroup {
 
         Option<Config.RevealMode> revealMode = Option.<Config.RevealMode>createBuilder()
                 .name(Component.literal("Reveal mode"))
-                .description(OptionDescription.of(Component.literal("Default map-reveal policy when a type does not override `reveal`.")))
+                .description(OptionDescription.of(Component.literal(
+                        "Default reveal policy when a deposit type doesn't override it.\n"
+                        + "ALWAYS: visible to everyone immediately (+ chat).\n"
+                        + "ON_DISCOVERY: hidden until a player walks within the discovery radius (~1s sweep).\n"
+                        + "ON_PROXIMITY: only shown while a player is within the proximity radius.\n"
+                        + "ON_PROSPECT: hidden until a player's COE Vein Finder resolves to it (needs the item, not just standing on it).")))
                 .binding(Config.REVEAL_MODE.getDefault(), Config.REVEAL_MODE::get, v -> Bindings.persist(Config.REVEAL_MODE, v, "Reveal mode"))
                 .controller(o -> EnumControllerBuilder.create(o).enumClass(Config.RevealMode.class)
                         .formatValue(e -> Component.literal(e.getSerializedName())))
