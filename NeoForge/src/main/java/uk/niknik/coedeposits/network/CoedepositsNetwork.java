@@ -132,17 +132,34 @@ public final class CoedepositsNetwork {
         // buildVisible needs it to check per-player reveal records. Pulled
         // once outside the player loop to avoid repeated DataStorage lookups.
         DepositSavedData store = DepositSavedData.get(lvl);
+        boolean global = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
 
-        // ── Step 2: per-player tailored sync ────────────────────────────────
+        // ── Step 2: per-player tailored sync + reconcile ────────────────────
         // Each player gets a different snapshot list because reveal state is
-        // per-player. We skip:
-        //   - players in other dimensions (their cache holds other dims' data)
-        //   - players whose visible list is empty (no point sending an empty packet)
+        // per-player. Players in other dimensions are skipped (their cache holds
+        // other dims' data). Because the client MERGES syncs, hiding a deposit
+        // needs an explicit removal — so under PER_PLAYER we also drop any
+        // globally-revealed deposit the player can no longer see (it was shared
+        // under GLOBAL and the scope has since flipped). Bounded by the global
+        // set; a no-op on clients that never cached it.
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
             var visible = buildVisible(lvl, store, p, deposits);
-            if (visible.isEmpty()) continue;
-            PacketDistributor.sendToPlayer(p, new DepositSyncPayload(visible));
+            if (!visible.isEmpty()) {
+                PacketDistributor.sendToPlayer(p, new DepositSyncPayload(visible));
+            }
+            if (!global) {
+                List<java.util.UUID> hide = new ArrayList<>();
+                for (Deposit d : deposits) {
+                    if (!store.isGloballyRevealed(d.id()) || store.isRevealed(p.getUUID(), d.id())) continue;
+                    DepositType type = Coedeposits.DEPOSIT_TYPES.get(d.typeId());
+                    Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
+                    if (mode.isPerPlayer()) hide.add(d.id());
+                }
+                if (!hide.isEmpty()) {
+                    PacketDistributor.sendToPlayer(p, new DepositRemovePayload(hide));
+                }
+            }
         }
     }
 
@@ -156,16 +173,20 @@ public final class CoedepositsNetwork {
      */
     public static boolean revealAndNotify(ServerLevel lvl, ServerPlayer player, Deposit dep) {
         // ── Step 1: claim the reveal (idempotent), honouring reveal_scope ───
-        // GLOBAL marks the deposit revealed for everyone; PER_PLAYER for just
-        // this player. Either way we bail when it was already revealed, so the
-        // ON_DISCOVERY / ON_PROSPECT listeners can call this every tick without
-        // spamming.
+        // Always record the discoverer's PERSONAL reveal — so if reveal_scope is
+        // later switched to PER_PLAYER, players keep the deposits they found
+        // themselves (GLOBAL just layers "visible to everyone" on top). We bail
+        // when there's nothing new to announce, so the ON_DISCOVERY / ON_PROSPECT
+        // listeners can call this every tick without spamming.
         DepositSavedData store = DepositSavedData.get(lvl);
         boolean global = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
+        boolean personalNew = store.reveal(player.getUUID(), dep.id());
         if (global) {
+            // Announce on the FIRST global reveal only — once globally revealed,
+            // every other trigger (this or another player) bails: all already see it.
             if (!store.revealGlobal(dep.id())) return false;
-        } else {
-            if (!store.reveal(player.getUUID(), dep.id())) return false;
+        } else if (!personalNew) {
+            return false;  // already personally revealed
         }
 
         // ── Step 2: build the snapshot + discovery packet ───────────────────
@@ -217,6 +238,7 @@ public final class CoedepositsNetwork {
         // a slightly oversized backing array.
         List<DepositSnapshot> out = new ArrayList<>(deposits.size());
         var pid = player.getUUID();
+        boolean globalScope = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
         for (Deposit d : deposits) {
             // Look up the type's effective reveal mode. type may be null for
             // legacy SavedData entries whose typeId no longer exists in the
@@ -228,10 +250,12 @@ public final class CoedepositsNetwork {
             // visibility on the reveal record. ALWAYS and ON_PROXIMITY always
             // include the snapshot — proximity filtering happens client-side
             // at render time, not in this server-side filter. A GLOBAL-scope
-            // reveal (store.isGloballyRevealed) makes it visible to everyone.
-            if (mode.isPerPlayer()
-                    && !store.isGloballyRevealed(d.id())
-                    && !store.isRevealed(pid, d.id())) continue;
+            // reveal makes a deposit visible to everyone, but ONLY while the
+            // scope is GLOBAL — under PER_PLAYER visibility is purely personal,
+            // so flipping back hides shared discoveries again.
+            boolean seen = store.isRevealed(pid, d.id())
+                    || (globalScope && store.isGloballyRevealed(d.id()));
+            if (mode.isPerPlayer() && !seen) continue;
             out.add(DepositSnapshot.fromDeposit(lvl, d));
         }
         return out;
