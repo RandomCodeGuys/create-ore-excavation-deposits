@@ -56,6 +56,24 @@ public class Config {
         }
     }
 
+    /**
+     * Scope of a per-player reveal trigger (ON_DISCOVERY walk-into / ON_PROSPECT
+     * vein-finder): {@link #PER_PLAYER} keeps each player's discoveries private
+     * (COE's own behaviour), {@link #GLOBAL} shares the first player's discovery
+     * with everyone. No effect on ALWAYS (already global) or ON_PROXIMITY (a
+     * client-side distance filter).
+     */
+    public enum RevealScope implements StringRepresentable {
+        PER_PLAYER, GLOBAL;
+
+        public static final Codec<RevealScope> CODEC = StringRepresentable.fromEnum(RevealScope::values);
+
+        @Override
+        public String getSerializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -184,6 +202,19 @@ public class Config {
             .defineEnum("reveal_mode", RevealMode.ALWAYS);
 
     /**
+     * Scope of per-player reveal triggers (ON_DISCOVERY / ON_PROSPECT):
+     * PER_PLAYER (default, COE-like — each player discovers for themselves) or
+     * GLOBAL (the first player's discovery reveals the deposit for everyone).
+     * No effect on ALWAYS or ON_PROXIMITY.
+     */
+    public static final ModConfigSpec.EnumValue<RevealScope> REVEAL_SCOPE = BUILDER
+            .comment("Scope of a per-player reveal (ON_DISCOVERY / ON_PROSPECT):",
+                    "  PER_PLAYER — each player must discover/prospect a deposit themselves (COE-like).",
+                    "  GLOBAL     — the first player to discover/prospect it reveals it for everyone.",
+                    "No effect on ALWAYS (already global) or ON_PROXIMITY (client-side distance filter).")
+            .defineEnum("reveal_scope", RevealScope.PER_PLAYER);
+
+    /**
      * Whether to show the chat line when a deposit is discovered (ALWAYS
      * placement, or a per-player reveal). Off = the deposit still appears on the
      * map / Xaero waypoint, just without the chat notification. Read client-side
@@ -207,6 +238,7 @@ public class Config {
                     "  %pos%  — clickable coordinate (suggests /tp)",
                     "  %x% %y% %z% — raw coordinate numbers",
                     "  %type% — raw type id (e.g. createoreexcavation:ore_vein_type/iron)",
+                    "  %player% — discoverer's name (only for GLOBAL reveal_scope; empty otherwise)",
                     "  %% — a literal percent sign. § colour codes are supported.")
             .define("discovery_message_format", "Discovered %name% at %pos%");
 

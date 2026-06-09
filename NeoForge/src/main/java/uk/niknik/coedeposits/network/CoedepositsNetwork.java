@@ -155,30 +155,46 @@ public final class CoedepositsNetwork {
      * @return  true when a fresh reveal happened (caller may want to log)
      */
     public static boolean revealAndNotify(ServerLevel lvl, ServerPlayer player, Deposit dep) {
-        // ── Step 1: claim the reveal (idempotent) ───────────────────────────
-        // store.reveal returns false when the player already had this deposit
-        // marked revealed — we bail without sending duplicate packets, so the
-        // ON_DISCOVERY / ON_PROSPECT listeners can call this every tick
-        // without spamming the client.
+        // ── Step 1: claim the reveal (idempotent), honouring reveal_scope ───
+        // GLOBAL marks the deposit revealed for everyone; PER_PLAYER for just
+        // this player. Either way we bail when it was already revealed, so the
+        // ON_DISCOVERY / ON_PROSPECT listeners can call this every tick without
+        // spamming.
         DepositSavedData store = DepositSavedData.get(lvl);
-        if (!store.reveal(player.getUUID(), dep.id())) return false;
+        boolean global = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
+        if (global) {
+            if (!store.revealGlobal(dep.id())) return false;
+        } else {
+            if (!store.reveal(player.getUUID(), dep.id())) return false;
+        }
 
-        // ── Step 2: push the deposit snapshot to the player's cache ─────────
-        // Without this the marker wouldn't appear on the map until the next
-        // 5-second re-sync from DepositDepletionListener — too laggy for a
-        // "just discovered it!" UX moment.
-        sendSync(player, new DepositSyncPayload(List.of(DepositSnapshot.fromDeposit(lvl, dep))));
-
-        // ── Step 3: chat-style discovery packet (gold message + waypoint) ──
-        // Coord Y uses spawn Y so the resulting `/tp` suggestion is at a
-        // sensible elevation rather than the chunk-core's possibly-weird Y.
+        // ── Step 2: build the snapshot + discovery packet ───────────────────
+        // Coord Y uses spawn Y so the `/tp` suggestion lands at a sensible
+        // elevation rather than the chunk-core's possibly-weird Y. %player% is
+        // the discoverer's name (used by GLOBAL "X discovered Y" formats).
+        String name = DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId());
         BlockPos pos = new BlockPos(
                 dep.core().getMiddleBlockX(),
                 lvl.getSharedSpawnPos().getY(),
                 dep.core().getMiddleBlockZ());
-        sendDiscovery(player, new DepositDiscoveryPayload(
-                DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
-                pos, dep.typeId()));
+        DepositDiscoveryPayload discovery =
+                new DepositDiscoveryPayload(name, pos, dep.typeId(), player.getName().getString());
+        DepositSnapshot snap = DepositSnapshot.fromDeposit(lvl, dep);
+
+        // ── Step 3: deliver — to everyone (GLOBAL) or just this player ──────
+        // GLOBAL: the deposit is now globally revealed, so push the marker + chat
+        // to every player in this dimension. Clients with discovery_chat off still
+        // get the marker (the chat line is suppressed client-side).
+        if (global) {
+            for (ServerPlayer p : lvl.getServer().getPlayerList().getPlayers()) {
+                if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
+                sendSync(p, new DepositSyncPayload(List.of(snap)));
+                sendDiscovery(p, discovery);
+            }
+        } else {
+            sendSync(player, new DepositSyncPayload(List.of(snap)));
+            sendDiscovery(player, discovery);
+        }
         return true;
     }
 
@@ -211,8 +227,11 @@ public final class CoedepositsNetwork {
             // Only the per-player modes (ON_DISCOVERY / ON_PROSPECT) gate
             // visibility on the reveal record. ALWAYS and ON_PROXIMITY always
             // include the snapshot — proximity filtering happens client-side
-            // at render time, not in this server-side filter.
-            if (mode.isPerPlayer() && !store.isRevealed(pid, d.id())) continue;
+            // at render time, not in this server-side filter. A GLOBAL-scope
+            // reveal (store.isGloballyRevealed) makes it visible to everyone.
+            if (mode.isPerPlayer()
+                    && !store.isGloballyRevealed(d.id())
+                    && !store.isRevealed(pid, d.id())) continue;
             out.add(DepositSnapshot.fromDeposit(lvl, d));
         }
         return out;

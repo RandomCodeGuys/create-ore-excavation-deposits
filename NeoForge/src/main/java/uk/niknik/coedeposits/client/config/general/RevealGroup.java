@@ -31,6 +31,17 @@ public final class RevealGroup {
                 .build();
         group.option(revealMode);
 
+        Option<Config.RevealScope> revealScope = Option.<Config.RevealScope>createBuilder()
+                .name(Component.literal("Reveal scope"))
+                .description(OptionDescription.of(Component.literal(
+                        "For ON_DISCOVERY / ON_PROSPECT modes: PER_PLAYER = each player discovers for themselves (COE-like); GLOBAL = the first player's discovery reveals it for everyone. No effect on ALWAYS / ON_PROXIMITY.")))
+                .binding(Config.REVEAL_SCOPE.getDefault(), Config.REVEAL_SCOPE::get,
+                        v -> Bindings.persist(Config.REVEAL_SCOPE, v, "Reveal scope"))
+                .controller(o -> EnumControllerBuilder.create(o).enumClass(Config.RevealScope.class)
+                        .formatValue(e -> Component.literal(e.getSerializedName())))
+                .build();
+        group.option(revealScope);
+
         Option<Integer> proximity = Option.<Integer>createBuilder()
                 .name(Component.literal("Proximity reveal blocks"))
                 .description(OptionDescription.of(Component.literal("Block radius for ON_PROXIMITY reveal mode.")))

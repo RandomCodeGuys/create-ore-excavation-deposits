@@ -77,6 +77,7 @@ public final class XaeroBridge {
             case "y"    -> Component.literal(Integer.toString(p.pos().getY()));
             case "z"    -> Component.literal(Integer.toString(p.pos().getZ()));
             case "type" -> Component.literal(p.typeId().toString()).withStyle(ChatFormatting.AQUA);
+            case "player" -> Component.literal(p.player()).withStyle(ChatFormatting.GREEN);  // discoverer (GLOBAL); empty otherwise
             case ""     -> Component.literal("%");           // %% → a literal percent
             default     -> Component.literal("%" + token + "%");  // unknown token, leave verbatim
         };

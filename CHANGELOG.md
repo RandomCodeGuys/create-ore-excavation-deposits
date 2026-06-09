@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **Discovery chat controls in the in-game config** — the **Reveal** group now has a **Discovery chat message** toggle (off keeps the map marker / Xaero waypoint, just no chat line) and a **Discovery message** template field, alongside the `discovery_chat` / `discovery_message_format` toml options (#3).
+- **`reveal_scope` config — per-player or shared discoveries (#3).** For the per-player reveal modes (`ON_DISCOVERY` / `ON_PROSPECT`): `PER_PLAYER` (default) keeps each player's discoveries private (COE's own behaviour); `GLOBAL` makes the first player's discovery reveal the deposit for everyone — synced to all players in the dimension plus a chat line crediting the finder via the new `%player%` placeholder. Persisted per deposit in SavedData; surfaced in the **Reveal** config group. (No effect on `ALWAYS` / `ON_PROXIMITY`.) Per-type override is not included yet — it's a mechanical follow-up.
 
 ## 0.1.6-1
 

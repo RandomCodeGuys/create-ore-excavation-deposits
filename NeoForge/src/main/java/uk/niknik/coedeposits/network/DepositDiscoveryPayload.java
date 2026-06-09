@@ -16,11 +16,13 @@ import uk.niknik.coedeposits.Coedeposits;
  * spawns naturally and {@link uk.niknik.coedeposits.Config#REVEAL_MODE} is
  * {@code ALWAYS}.
  *
- * @param name    server-generated deposit label (used in chat)
+ * @param name    friendly deposit name (used as %name% in chat)
  * @param pos     core position to teleport to / show on the waypoint
  * @param typeId  deposit type id (used for the localized name and color)
+ * @param player  the discovering player's name for a GLOBAL-scope reveal
+ *                (used as %player% in chat), or empty for ALWAYS placements
  */
-public record DepositDiscoveryPayload(String name, BlockPos pos, ResourceLocation typeId)
+public record DepositDiscoveryPayload(String name, BlockPos pos, ResourceLocation typeId, String player)
         implements CustomPacketPayload {
 
     /** Type identity used by NeoForge's payload registry. */
@@ -28,12 +30,13 @@ public record DepositDiscoveryPayload(String name, BlockPos pos, ResourceLocatio
             new CustomPacketPayload.Type<>(
                     ResourceLocation.fromNamespaceAndPath(Coedeposits.MODID, "deposit_discovery"));
 
-    /** Wire encoding: UTF-8 name + BlockPos + ResourceLocation typeId. */
+    /** Wire encoding: UTF-8 name + BlockPos + ResourceLocation typeId + UTF-8 player. */
     public static final StreamCodec<RegistryFriendlyByteBuf, DepositDiscoveryPayload> STREAM_CODEC =
             StreamCodec.composite(
                     ByteBufCodecs.STRING_UTF8, DepositDiscoveryPayload::name,
                     BlockPos.STREAM_CODEC, DepositDiscoveryPayload::pos,
                     ResourceLocation.STREAM_CODEC, DepositDiscoveryPayload::typeId,
+                    ByteBufCodecs.STRING_UTF8, DepositDiscoveryPayload::player,
                     DepositDiscoveryPayload::new);
 
     @Override

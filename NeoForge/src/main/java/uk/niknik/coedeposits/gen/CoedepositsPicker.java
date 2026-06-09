@@ -585,7 +585,7 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                 lvl.getServer(),
                 new DepositDiscoveryPayload(
                         DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
-                        pos, dep.typeId()));
+                        pos, dep.typeId(), ""));
     }
 
     /**
