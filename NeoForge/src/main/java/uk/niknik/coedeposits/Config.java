@@ -184,6 +184,33 @@ public class Config {
             .defineEnum("reveal_mode", RevealMode.ALWAYS);
 
     /**
+     * Whether to show the chat line when a deposit is discovered (ALWAYS
+     * placement, or a per-player reveal). Off = the deposit still appears on the
+     * map / Xaero waypoint, just without the chat notification. Read client-side
+     * in {@link uk.niknik.coedeposits.compat.xaero.XaeroBridge}.
+     */
+    public static final ModConfigSpec.BooleanValue DISCOVERY_CHAT = BUILDER
+            .comment("Show a chat message when a deposit is discovered.",
+                    "Off = no chat line (the map marker / waypoint still appears). Default on.")
+            .define("discovery_chat", true);
+
+    /**
+     * Format string for the discovery chat line. Placeholders: {@code %name%}
+     * (friendly deposit name — the type's display_name or a prettified id),
+     * {@code %pos%} (clickable coordinate that suggests {@code /tp}),
+     * {@code %x% %y% %z%} (raw numbers), {@code %type%} (raw type id), {@code %%}
+     * (literal percent). Minecraft {@code §} colour codes work in the literal text.
+     */
+    public static final ModConfigSpec.ConfigValue<String> DISCOVERY_MESSAGE_FORMAT = BUILDER
+            .comment("Discovery chat message template. Placeholders:",
+                    "  %name% — friendly name (display_name or prettified id)",
+                    "  %pos%  — clickable coordinate (suggests /tp)",
+                    "  %x% %y% %z% — raw coordinate numbers",
+                    "  %type% — raw type id (e.g. createoreexcavation:ore_vein_type/iron)",
+                    "  %% — a literal percent sign. § colour codes are supported.")
+            .define("discovery_message_format", "discovered %name% at %pos%");
+
+    /**
      * Block-radius for {@link RevealMode#ON_PROXIMITY}. Client-side filter
      * inside {@link uk.niknik.coedeposits.client.WorldMapDepositRenderer}.
      * Computed against the nearest chunk of the deposit (centre block).

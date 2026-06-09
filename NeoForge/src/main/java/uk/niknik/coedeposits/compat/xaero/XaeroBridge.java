@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Style;
 import net.neoforged.fml.ModList;
 
 import uk.niknik.coedeposits.Coedeposits;
+import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.network.DepositDiscoveryPayload;
 
 /**
@@ -29,26 +30,67 @@ public final class XaeroBridge {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
-        MutableComponent base = Component.literal("[coedeposits] discovered ")
-                .withStyle(ChatFormatting.GOLD);
-        MutableComponent typeText = Component.literal(p.typeId().toString())
-                .withStyle(ChatFormatting.AQUA);
-        MutableComponent atText = Component.literal(" at ")
-                .withStyle(ChatFormatting.GRAY);
-        MutableComponent coordsText = Component.literal(
-                String.format("[%d, ~, %d]", p.pos().getX(), p.pos().getZ()))
+        // Chat line is opt-out (the map marker / Xaero waypoint still appear).
+        if (Config.DISCOVERY_CHAT.get()) {
+            mc.player.sendSystemMessage(buildDiscoveryMessage(p));
+        }
+
+        if (ModList.get().isLoaded(XAERO_MINIMAP)) {
+            tryAddXaeroWaypoint(p);
+        }
+    }
+
+    /**
+     * Render the discovery line from {@link Config#DISCOVERY_MESSAGE_FORMAT},
+     * substituting placeholders. Literal text between placeholders is passed
+     * through verbatim (Minecraft {@code §} colour codes render); unknown
+     * {@code %token%}s are left as-is.
+     */
+    private static MutableComponent buildDiscoveryMessage(DepositDiscoveryPayload p) {
+        String fmt = Config.DISCOVERY_MESSAGE_FORMAT.get();
+        MutableComponent out = Component.empty();
+        int i = 0;
+        while (i < fmt.length()) {
+            int pct = fmt.indexOf('%', i);
+            if (pct < 0) {                                   // no more tokens — rest is literal
+                out.append(Component.literal(fmt.substring(i)));
+                break;
+            }
+            if (pct > i) out.append(Component.literal(fmt.substring(i, pct)));
+            int end = fmt.indexOf('%', pct + 1);
+            if (end < 0) {                                   // dangling '%' — emit it literally
+                out.append(Component.literal(fmt.substring(pct)));
+                break;
+            }
+            out.append(placeholder(fmt.substring(pct + 1, end), p));
+            i = end + 1;
+        }
+        return out;
+    }
+
+    /** Resolve a single {@code %token%} to its styled component. */
+    private static MutableComponent placeholder(String token, DepositDiscoveryPayload p) {
+        return switch (token) {
+            case "name" -> Component.literal(p.name()).withStyle(ChatFormatting.GOLD);
+            case "pos"  -> coordComponent(p);
+            case "x"    -> Component.literal(Integer.toString(p.pos().getX()));
+            case "y"    -> Component.literal(Integer.toString(p.pos().getY()));
+            case "z"    -> Component.literal(Integer.toString(p.pos().getZ()));
+            case "type" -> Component.literal(p.typeId().toString()).withStyle(ChatFormatting.AQUA);
+            case ""     -> Component.literal("%");           // %% → a literal percent
+            default     -> Component.literal("%" + token + "%");  // unknown token, leave verbatim
+        };
+    }
+
+    /** Clickable "[x, ~, z]" coordinate that suggests {@code /tp}. */
+    private static MutableComponent coordComponent(DepositDiscoveryPayload p) {
+        return Component.literal(String.format("[%d, ~, %d]", p.pos().getX(), p.pos().getZ()))
                 .withStyle(Style.EMPTY
                         .withColor(ChatFormatting.YELLOW)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.SUGGEST_COMMAND,
                                 "/tp @s " + p.pos().getX() + " ~ " + p.pos().getZ()))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
                                 Component.literal("Click to suggest /tp"))));
-
-        mc.player.sendSystemMessage(base.append(typeText).append(atText).append(coordsText));
-
-        if (ModList.get().isLoaded(XAERO_MINIMAP)) {
-            tryAddXaeroWaypoint(p);
-        }
     }
 
     /**

@@ -89,6 +89,43 @@ public record DepositType(
     }
 
     /**
+     * Friendly, human-readable label for a deposit of {@code typeId}: the inline
+     * vein's {@code display_name} if the type sets one, otherwise a prettified
+     * type id. Used for the discovery chat notification's {@code %name%}.
+     *
+     * @param type   the resolved type, or {@code null} if unknown
+     * @param typeId the deposit's type id (used for the prettified fallback)
+     */
+    public static String displayNameOf(DepositType type, ResourceLocation typeId) {
+        if (type != null) {
+            Optional<String> dn = type.vein()
+                    .flatMap(VeinSpec::displayName)
+                    .filter(s -> !s.isBlank());
+            if (dn.isPresent()) return dn.get();
+        }
+        return prettyTypeName(typeId);
+    }
+
+    /**
+     * Title-cased label from a type id, dropping COE's {@code ore_vein_type/}
+     * folder and trailing {@code _vein}: {@code createoreexcavation:ore_vein_type/redstone}
+     * → "Redstone"; {@code coedeposits:nether_gold} → "Nether Gold".
+     */
+    public static String prettyTypeName(ResourceLocation typeId) {
+        String path = typeId.getPath();
+        int slash = path.lastIndexOf('/');
+        if (slash >= 0) path = path.substring(slash + 1);
+        if (path.endsWith("_vein")) path = path.substring(0, path.length() - "_vein".length());
+        StringBuilder sb = new StringBuilder();
+        for (String part : path.split("_")) {
+            if (part.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return sb.length() > 0 ? sb.toString() : typeId.getPath();
+    }
+
+    /**
      * True when this type may spawn in {@code dim}. An empty
      * {@link #dimensions} list means "any dimension" (subject to the global
      * {@link Config#ENABLED_DIMENSIONS} allow-list, which is checked

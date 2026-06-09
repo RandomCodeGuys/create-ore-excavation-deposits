@@ -176,7 +176,9 @@ public final class CoedepositsNetwork {
                 dep.core().getMiddleBlockX(),
                 lvl.getSharedSpawnPos().getY(),
                 dep.core().getMiddleBlockZ());
-        sendDiscovery(player, new DepositDiscoveryPayload(dep.name(), pos, dep.typeId()));
+        sendDiscovery(player, new DepositDiscoveryPayload(
+                DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                pos, dep.typeId()));
         return true;
     }
 

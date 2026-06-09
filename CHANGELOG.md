@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.1.7
+
+### Changed
+- **Friendlier, configurable discovery chat message.** The old line printed the raw type id with a `[coedeposits]` prefix (`[coedeposits] discovered createoreexcavation:ore_vein_type/water at [...]`), which read like debug output (reported in #3). It now resolves a friendly name — the type's `display_name` from `deposits.json`, otherwise a prettified id (`createoreexcavation:ore_vein_type/water` → "Water") — and the whole line is a config template `discovery_message_format` (default `discovered %name% at %pos%`). Placeholders: `%name%`, `%pos%` (clickable /tp), `%x% %y% %z%`, `%type%`, `%%`; `§` colour codes work.
+
+### Added
+- **`discovery_chat` config toggle** — turn the discovery chat line off entirely while keeping the map marker / Xaero waypoint (#3).
+
 ## 0.1.6-1
 
 ### Changed
