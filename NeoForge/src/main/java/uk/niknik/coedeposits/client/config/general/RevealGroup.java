@@ -10,7 +10,6 @@ import dev.isxander.yacl3.api.OptionGroup;
 import dev.isxander.yacl3.api.controller.EnumControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
 import dev.isxander.yacl3.api.controller.StringControllerBuilder;
-import dev.isxander.yacl3.api.controller.TickBoxControllerBuilder;
 
 import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.client.config.Bindings;
@@ -50,15 +49,9 @@ public final class RevealGroup {
                 .build();
         group.option(discovery);
 
-        Option<Boolean> discoveryChat = Option.<Boolean>createBuilder()
-                .name(Component.literal("Discovery chat message"))
-                .description(OptionDescription.of(Component.literal(
-                        "Show a chat line when a deposit is discovered. Off = no chat (the map marker / Xaero waypoint still appear).")))
-                .binding(Config.DISCOVERY_CHAT.getDefault(), Config.DISCOVERY_CHAT::get,
-                        v -> Bindings.persist(Config.DISCOVERY_CHAT, v, "Discovery chat"))
-                .controller(TickBoxControllerBuilder::create)
-                .build();
-        group.option(discoveryChat);
+        group.option(Bindings.toggle("Discovery chat message",
+                "Show a chat line when a deposit is discovered. Off = no chat (the map marker / Xaero waypoint still appear).",
+                Config.DISCOVERY_CHAT));
 
         Option<String> discoveryFormat = Option.<String>createBuilder()
                 .name(Component.literal("Discovery message"))
