@@ -208,7 +208,7 @@ public class Config {
                     "  %x% %y% %z% — raw coordinate numbers",
                     "  %type% — raw type id (e.g. createoreexcavation:ore_vein_type/iron)",
                     "  %% — a literal percent sign. § colour codes are supported.")
-            .define("discovery_message_format", "discovered %name% at %pos%");
+            .define("discovery_message_format", "Discovered %name% at %pos%");
 
     /**
      * Block-radius for {@link RevealMode#ON_PROXIMITY}. Client-side filter
