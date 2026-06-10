@@ -59,12 +59,14 @@ public class Config {
     /**
      * Scope of a per-player reveal trigger (ON_DISCOVERY walk-into / ON_PROSPECT
      * vein-finder): {@link #PER_PLAYER} keeps each player's discoveries private
-     * (COE's own behaviour), {@link #GLOBAL} shares the first player's discovery
-     * with everyone. No effect on ALWAYS (already global) or ON_PROXIMITY (a
-     * client-side distance filter).
+     * (COE's own behaviour), {@link #TEAM} shares them with the discoverer's
+     * party/team (Open Parties and Claims → FTB Teams → vanilla scoreboard team),
+     * {@link #GLOBAL} shares the first player's discovery with everyone. No
+     * effect on ALWAYS (already global) or ON_PROXIMITY (a client-side distance
+     * filter).
      */
     public enum RevealScope implements StringRepresentable {
-        PER_PLAYER, GLOBAL;
+        PER_PLAYER, TEAM, GLOBAL;
 
         public static final Codec<RevealScope> CODEC = StringRepresentable.fromEnum(RevealScope::values);
 
@@ -210,6 +212,8 @@ public class Config {
     public static final ModConfigSpec.EnumValue<RevealScope> REVEAL_SCOPE = BUILDER
             .comment("Scope of a per-player reveal (ON_DISCOVERY / ON_PROSPECT):",
                     "  PER_PLAYER — each player must discover/prospect a deposit themselves (COE-like).",
+                    "  TEAM       — a discovery is shared with the discoverer's party/team",
+                    "               (Open Parties and Claims, else FTB Teams, else the vanilla scoreboard team).",
                     "  GLOBAL     — the first player to discover/prospect it reveals it for everyone.",
                     "No effect on ALWAYS (already global) or ON_PROXIMITY (client-side distance filter).")
             .defineEnum("reveal_scope", RevealScope.PER_PLAYER);

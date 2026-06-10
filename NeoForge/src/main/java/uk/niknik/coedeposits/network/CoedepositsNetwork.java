@@ -54,6 +54,27 @@ public final class CoedepositsNetwork {
                 DepositRemovePayload.TYPE,
                 DepositRemovePayload.STREAM_CODEC,
                 CoedepositsNetwork::handleRemoval);
+        reg.playToServer(
+                DepositSharePayload.TYPE,
+                DepositSharePayload.STREAM_CODEC,
+                CoedepositsNetwork::handleShareRequest);
+    }
+
+    /**
+     * Server-side: a client pressed the share keybind on a hovered deposit.
+     * Validate the deposit exists and the sender can see it (anti-probe — a
+     * hacked client must not enumerate hidden deposits by spamming UUIDs),
+     * then broadcast the clickable chat offer.
+     */
+    private static void handleShareRequest(DepositSharePayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            ServerLevel lvl = sp.serverLevel();
+            DepositSavedData store = DepositSavedData.get(lvl);
+            Deposit dep = store.all().get(payload.depositId());
+            if (dep == null || !canSee(store, sp, dep)) return;
+            broadcastShareOffer(lvl, sp, dep);
+        });
     }
 
     /** Client-side: enqueue chat + Xaero waypoint attempt onto main thread. */
@@ -179,7 +200,8 @@ public final class CoedepositsNetwork {
         // when there's nothing new to announce, so the ON_DISCOVERY / ON_PROSPECT
         // listeners can call this every tick without spamming.
         DepositSavedData store = DepositSavedData.get(lvl);
-        boolean global = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
+        Config.RevealScope scope = Config.REVEAL_SCOPE.get();
+        boolean global = scope == Config.RevealScope.GLOBAL;
         boolean personalNew = store.reveal(player.getUUID(), dep.id());
         if (global) {
             // Announce on the FIRST global reveal only — once globally revealed,
@@ -202,21 +224,106 @@ public final class CoedepositsNetwork {
                 new DepositDiscoveryPayload(name, pos, dep.typeId(), player.getName().getString());
         DepositSnapshot snap = DepositSnapshot.fromDeposit(lvl, dep);
 
-        // ── Step 3: deliver — to everyone (GLOBAL) or just this player ──────
-        // GLOBAL: the deposit is now globally revealed, so push the marker + chat
-        // to every player in this dimension. Clients with discovery_chat off still
-        // get the marker (the chat line is suppressed client-side).
+        // ── Step 3: deliver — everyone (GLOBAL), the team (TEAM), or just this
+        // player (PER_PLAYER). Clients with discovery_chat off still get the
+        // marker (the chat line is suppressed client-side).
         if (global) {
             for (ServerPlayer p : lvl.getServer().getPlayerList().getPlayers()) {
                 if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
                 sendSync(p, new DepositSyncPayload(List.of(snap)));
                 sendDiscovery(p, discovery);
             }
+        } else if (scope == Config.RevealScope.TEAM) {
+            // Write a PERSONAL reveal record for every teammate (works offline —
+            // they get the marker from buildVisible on join), and push the
+            // one-shot marker + chat to the online ones in this dimension.
+            sendSync(player, new DepositSyncPayload(List.of(snap)));
+            sendDiscovery(player, discovery);
+            for (java.util.UUID mate : uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player)) {
+                store.reveal(mate, dep.id());
+                ServerPlayer mp = lvl.getServer().getPlayerList().getPlayer(mate);
+                if (mp != null && mp.serverLevel().dimension().equals(lvl.dimension())) {
+                    sendSync(mp, new DepositSyncPayload(List.of(snap)));
+                    sendDiscovery(mp, discovery);
+                }
+            }
         } else {
             sendSync(player, new DepositSyncPayload(List.of(snap)));
             sendDiscovery(player, discovery);
         }
         return true;
+    }
+
+    /**
+     * Can this player currently see {@code dep} (i.e. is it on their map)?
+     * Mirrors {@link #buildVisible}'s per-deposit predicate. Used to gate the
+     * share actions — you can only share what you can see.
+     */
+    public static boolean canSee(DepositSavedData store, ServerPlayer player, Deposit dep) {
+        DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
+        Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
+        if (!mode.isPerPlayer()) return true;
+        if (store.isRevealed(player.getUUID(), dep.id())) return true;
+        return Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL
+                && store.isGloballyRevealed(dep.id());
+    }
+
+    /**
+     * Reveal {@code dep} for {@code to} because {@code from} shared it (direct
+     * {@code /coedeposits share <player>} or a clicked chat offer). Idempotent:
+     * returns false when the target already had it. On a fresh share, pushes the
+     * marker sync + the discovery chat line (with {@code %player%} = the sharer,
+     * so templates read "Dev shared/discovered Iron …") + Xaero waypoint.
+     */
+    public static boolean shareWith(ServerLevel lvl, String sharerName, ServerPlayer to, Deposit dep) {
+        DepositSavedData store = DepositSavedData.get(lvl);
+        if (!store.reveal(to.getUUID(), dep.id())) return false;
+        sendSync(to, new DepositSyncPayload(List.of(DepositSnapshot.fromDeposit(lvl, dep))));
+        BlockPos pos = new BlockPos(
+                dep.core().getMiddleBlockX(),
+                lvl.getSharedSpawnPos().getY(),
+                dep.core().getMiddleBlockZ());
+        sendDiscovery(to, new DepositDiscoveryPayload(
+                DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                pos, dep.typeId(), sharerName));
+        return true;
+    }
+
+    /**
+     * Broadcast a clickable share offer to every player in the dimension:
+     * "<sharer> shares <Name> at [x, ~, z]  [+ Add to map]". Clicking the button
+     * runs {@code /coedeposits accept <id>}, which reveals the deposit for the
+     * clicking player ({@link #shareWith}). This is the chat-button flow behind
+     * the world-map share keybind and {@code /coedeposits share} with no target.
+     */
+    public static void broadcastShareOffer(ServerLevel lvl, ServerPlayer sharer, Deposit dep) {
+        String name = DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId());
+        int x = dep.core().getMiddleBlockX();
+        int z = dep.core().getMiddleBlockZ();
+        net.minecraft.network.chat.MutableComponent line = net.minecraft.network.chat.Component
+                .literal(sharer.getName().getString())
+                .withStyle(net.minecraft.ChatFormatting.GREEN)
+                .append(net.minecraft.network.chat.Component.literal(" shares ")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY))
+                .append(net.minecraft.network.chat.Component.literal(name)
+                        .withStyle(net.minecraft.ChatFormatting.GOLD))
+                .append(net.minecraft.network.chat.Component.literal(" at ")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY))
+                .append(net.minecraft.network.chat.Component.literal(String.format("[%d, ~, %d]", x, z))
+                        .withStyle(net.minecraft.ChatFormatting.YELLOW))
+                .append(net.minecraft.network.chat.Component.literal("  [✚ Add to map]")
+                        .withStyle(s -> s.withColor(net.minecraft.ChatFormatting.AQUA)
+                                .withClickEvent(new net.minecraft.network.chat.ClickEvent(
+                                        net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
+                                        "/coedeposits accept " + dep.id()))
+                                .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                        net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                        net.minecraft.network.chat.Component.literal(
+                                                "Add this deposit to your map")))));
+        for (ServerPlayer p : lvl.getServer().getPlayerList().getPlayers()) {
+            if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
+            p.sendSystemMessage(line);
+        }
     }
 
     /**

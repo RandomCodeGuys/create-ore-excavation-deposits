@@ -69,6 +69,11 @@ public final class WorldMapDepositRenderer {
             double mapScale, double cameraX, double cameraZ,
             int mouseBlockX, int mouseBlockZ) {
 
+        // Reset the share-keybind handoff every frame; Phase 7 re-sets it while
+        // a deposit is actually hovered, so it can never go stale.
+        shareHoveredScreen = null;
+        shareHoveredId = null;
+
         // ── Phase 1: cheap early-exits ──────────────────────────────────────
         // Both guards avoid the per-frame pose-stack setup cost when there's
         // nothing to draw.
@@ -248,11 +253,24 @@ public final class WorldMapDepositRenderer {
         // pose was popped first. Lines are built from the deposit metadata
         // + per-chunk remaining via buildTooltip.
         if (hovered != null) {
+            // Hand the hovered deposit to the share keybind (CoedepositsClientEvents
+            // polls hoveredDepositId on consumeClick).
+            shareHoveredScreen = screen;
+            shareHoveredId = hovered.id();
             List<FormattedCharSequence> lines = buildTooltip(hovered, hoveredChunkLong).stream()
                     .map(Component::getVisualOrderText)
                     .toList();
             graphics.renderTooltip(mc.font, lines, mouseX, mouseY);
         }
+    }
+
+    /** Hovered-deposit handoff to the share keybind: written every frame by render(). */
+    private static volatile Screen shareHoveredScreen = null;
+    private static volatile java.util.UUID shareHoveredId = null;
+
+    /** Deposit id under the mouse when {@code screen} is the live map screen, else null. */
+    public static java.util.UUID hoveredDepositId(Screen screen) {
+        return screen != null && screen == shareHoveredScreen ? shareHoveredId : null;
     }
 
     /** Build the multi-line hover tooltip for the chunk under the mouse. */
@@ -407,6 +425,15 @@ public final class WorldMapDepositRenderer {
         else if (remaining == 0L)  remainLine.withStyle(ChatFormatting.AQUA);
         else                       remainLine.withStyle(ChatFormatting.GREEN);
         out.add(remainLine);
+
+        // Share-keybind hint — only when the player has actually bound the key
+        // (default is unbound), so the tooltip doesn't advertise a dead button.
+        if (!CoedepositsClientEvents.SHARE_DEPOSIT.isUnbound()) {
+            out.add(Component.literal("[")
+                    .append(CoedepositsClientEvents.SHARE_DEPOSIT.getTranslatedKeyMessage())
+                    .append(Component.literal("] share to chat"))
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        }
 
         return out;
     }

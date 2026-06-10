@@ -43,14 +43,28 @@ public final class CoedepositsClientEvents {
             GLFW.GLFW_KEY_UNKNOWN,
             "key.categories.coedeposits");
 
+    /**
+     * Share the deposit hovered on the world map to chat (clickable
+     * [+ Add to map] offer for everyone). Default unbound, UNIVERSAL context so
+     * it fires while the Xaero map screen is open — same pattern as
+     * {@link #TOGGLE_OVERLAY}.
+     */
+    public static final KeyMapping SHARE_DEPOSIT = new KeyMapping(
+            "key.coedeposits.share_deposit",
+            KeyConflictContext.UNIVERSAL,
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_UNKNOWN,
+            "key.categories.coedeposits");
+
     /** Mod-bus subscriber for the keybind registration event. */
     @SuppressWarnings("removal")
     @EventBusSubscriber(modid = Coedeposits.MODID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
     public static final class Mod {
-        /** Register the toggle keybind so it appears in Options → Controls. */
+        /** Register the keybinds so they appear in Options → Controls. */
         @SubscribeEvent
         public static void onRegisterKeys(RegisterKeyMappingsEvent event) {
             event.register(TOGGLE_OVERLAY);
+            event.register(SHARE_DEPOSIT);
         }
     }
 
@@ -70,6 +84,17 @@ public final class CoedepositsClientEvents {
                                     : "[coedeposits] map overlay OFF")
                                     .withStyle(now ? ChatFormatting.GREEN : ChatFormatting.GRAY),
                             true /* actionbar */);
+                }
+            }
+            while (SHARE_DEPOSIT.consumeClick()) {
+                Minecraft mc = Minecraft.getInstance();
+                // Only meaningful while the map screen is open with a deposit
+                // hovered — hoveredDepositId verifies the screen identity, so a
+                // press anywhere else is a silent no-op.
+                java.util.UUID id = WorldMapDepositRenderer.hoveredDepositId(mc.screen);
+                if (id != null) {
+                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                            new uk.niknik.coedeposits.network.DepositSharePayload(id));
                 }
             }
         }

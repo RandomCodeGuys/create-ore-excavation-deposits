@@ -39,7 +39,11 @@ public final class RevealGroup {
         Option<Config.RevealScope> revealScope = Option.<Config.RevealScope>createBuilder()
                 .name(Component.literal("Reveal scope"))
                 .description(OptionDescription.of(Component.literal(
-                        "For ON_DISCOVERY / ON_PROSPECT modes: PER_PLAYER = each player discovers for themselves (COE-like); GLOBAL = the first player's discovery reveals it for everyone. No effect on ALWAYS / ON_PROXIMITY.")))
+                        "For ON_DISCOVERY / ON_PROSPECT modes:\n"
+                        + "PER_PLAYER: each player discovers for themselves (COE-like).\n"
+                        + "TEAM: a discovery is shared with the discoverer's party/team (Open Parties and Claims, else FTB Teams, else the vanilla scoreboard team).\n"
+                        + "GLOBAL: the first player's discovery reveals it for everyone.\n"
+                        + "No effect on ALWAYS / ON_PROXIMITY.")))
                 .binding(Config.REVEAL_SCOPE.getDefault(), Config.REVEAL_SCOPE::get,
                         v -> Bindings.persist(Config.REVEAL_SCOPE, v, "Reveal scope"))
                 .controller(o -> EnumControllerBuilder.create(o).enumClass(Config.RevealScope.class)
