@@ -86,17 +86,31 @@ public final class CoedepositsClientEvents {
                             true /* actionbar */);
                 }
             }
-            while (SHARE_DEPOSIT.consumeClick()) {
-                Minecraft mc = Minecraft.getInstance();
-                // Only meaningful while the map screen is open with a deposit
-                // hovered — hoveredDepositId verifies the screen identity, so a
-                // press anywhere else is a silent no-op.
-                java.util.UUID id = WorldMapDepositRenderer.hoveredDepositId(mc.screen);
-                if (id != null) {
-                    net.neoforged.neoforge.network.PacketDistributor.sendToServer(
-                            new uk.niknik.coedeposits.network.DepositSharePayload(id));
-                }
+        }
+
+        /**
+         * Share-keybind handler. While a Screen is open, vanilla never "clicks"
+         * KeyMappings (consumeClick stays 0), so the map-screen share key must
+         * be caught at the screen level: match the raw key against the binding
+         * and act when a deposit is hovered.
+         */
+        @SubscribeEvent
+        public static void onScreenKeyPressed(net.neoforged.neoforge.client.event.ScreenEvent.KeyPressed.Pre event) {
+            if (SHARE_DEPOSIT.isUnbound()
+                    || !SHARE_DEPOSIT.matches(event.getKeyCode(), event.getScanCode())) {
+                return;
             }
+            java.util.UUID id = WorldMapDepositRenderer.hoveredDepositId(event.getScreen());
+            if (id == null) return;  // not the map screen / nothing hovered
+            net.neoforged.neoforge.network.PacketDistributor.sendToServer(
+                    new uk.niknik.coedeposits.network.DepositSharePayload(id));
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.player != null) {
+                mc.player.displayClientMessage(
+                        Component.literal("[coedeposits] share offer posted to chat")
+                                .withStyle(ChatFormatting.GREEN), true /* actionbar */);
+            }
+            event.setCanceled(true);  // don't let the map screen also consume the key
         }
 
         /**

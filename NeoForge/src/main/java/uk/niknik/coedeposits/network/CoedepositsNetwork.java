@@ -153,33 +153,33 @@ public final class CoedepositsNetwork {
         // buildVisible needs it to check per-player reveal records. Pulled
         // once outside the player loop to avoid repeated DataStorage lookups.
         DepositSavedData store = DepositSavedData.get(lvl);
-        boolean global = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
 
         // ── Step 2: per-player tailored sync + reconcile ────────────────────
         // Each player gets a different snapshot list because reveal state is
         // per-player. Players in other dimensions are skipped (their cache holds
-        // other dims' data). Because the client MERGES syncs, hiding a deposit
-        // needs an explicit removal — so under PER_PLAYER we also drop any
-        // globally-revealed deposit the player can no longer see (it was shared
-        // under GLOBAL and the scope has since flipped). Bounded by the global
-        // set; a no-op on clients that never cached it.
+        // other dims' data). Because the client MERGES syncs and never drops on
+        // its own, hiding needs an explicit removal: every per-player-mode
+        // deposit NOT in the player's visible set gets a removal each sweep.
+        // That covers all the live transitions — GLOBAL→PER_PLAYER un-sharing,
+        // leaving a TEAM, scope flips. Removals for ids a client never cached
+        // are a cheap no-op.
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
             var visible = buildVisible(lvl, store, p, deposits);
             if (!visible.isEmpty()) {
                 PacketDistributor.sendToPlayer(p, new DepositSyncPayload(visible));
             }
-            if (!global) {
-                List<java.util.UUID> hide = new ArrayList<>();
-                for (Deposit d : deposits) {
-                    if (!store.isGloballyRevealed(d.id()) || store.isRevealed(p.getUUID(), d.id())) continue;
-                    DepositType type = Coedeposits.DEPOSIT_TYPES.get(d.typeId());
-                    Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
-                    if (mode.isPerPlayer()) hide.add(d.id());
-                }
-                if (!hide.isEmpty()) {
-                    PacketDistributor.sendToPlayer(p, new DepositRemovePayload(hide));
-                }
+            java.util.Set<java.util.UUID> visIds = new java.util.HashSet<>();
+            for (DepositSnapshot s : visible) visIds.add(s.id());
+            List<java.util.UUID> hide = new ArrayList<>();
+            for (Deposit d : deposits) {
+                if (visIds.contains(d.id())) continue;
+                DepositType type = Coedeposits.DEPOSIT_TYPES.get(d.typeId());
+                Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
+                if (mode.isPerPlayer()) hide.add(d.id());
+            }
+            if (!hide.isEmpty()) {
+                PacketDistributor.sendToPlayer(p, new DepositRemovePayload(hide));
             }
         }
     }
@@ -202,13 +202,22 @@ public final class CoedepositsNetwork {
         DepositSavedData store = DepositSavedData.get(lvl);
         Config.RevealScope scope = Config.REVEAL_SCOPE.get();
         boolean global = scope == Config.RevealScope.GLOBAL;
-        boolean personalNew = store.reveal(player.getUUID(), dep.id());
+        java.util.Set<java.util.UUID> mates = scope == Config.RevealScope.TEAM
+                ? uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player)
+                : java.util.Set.of();
+        // Was the deposit already visible to this player BEFORE this trigger?
+        // (personally revealed, team-visible via a teammate's record, or globally
+        // revealed). If so there's nothing to announce — but we still record the
+        // personal find below, so the player keeps it after leaving the team.
+        boolean wasVisible = store.isRevealed(player.getUUID(), dep.id())
+                || (scope == Config.RevealScope.TEAM && anyRevealed(store, mates, dep.id()));
+        store.reveal(player.getUUID(), dep.id());
         if (global) {
             // Announce on the FIRST global reveal only — once globally revealed,
             // every other trigger (this or another player) bails: all already see it.
             if (!store.revealGlobal(dep.id())) return false;
-        } else if (!personalNew) {
-            return false;  // already personally revealed
+        } else if (wasVisible) {
+            return false;
         }
 
         // ── Step 2: build the snapshot + discovery packet ───────────────────
@@ -234,13 +243,14 @@ public final class CoedepositsNetwork {
                 sendDiscovery(p, discovery);
             }
         } else if (scope == Config.RevealScope.TEAM) {
-            // Write a PERSONAL reveal record for every teammate (works offline —
-            // they get the marker from buildVisible on join), and push the
-            // one-shot marker + chat to the online ones in this dimension.
+            // Visibility under TEAM is LIVE (buildVisible unions the team's
+            // records), so no records are copied — just push the one-shot
+            // marker + chat to the discoverer and the online teammates in this
+            // dimension. Offline teammates see it on join; new teammates inherit
+            // it via the live union; leaving the team un-shares it.
             sendSync(player, new DepositSyncPayload(List.of(snap)));
             sendDiscovery(player, discovery);
-            for (java.util.UUID mate : uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player)) {
-                store.reveal(mate, dep.id());
+            for (java.util.UUID mate : mates) {
                 ServerPlayer mp = lvl.getServer().getPlayerList().getPlayer(mate);
                 if (mp != null && mp.serverLevel().dimension().equals(lvl.dimension())) {
                     sendSync(mp, new DepositSyncPayload(List.of(snap)));
@@ -264,8 +274,13 @@ public final class CoedepositsNetwork {
         Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
         if (!mode.isPerPlayer()) return true;
         if (store.isRevealed(player.getUUID(), dep.id())) return true;
-        return Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL
-                && store.isGloballyRevealed(dep.id());
+        Config.RevealScope scope = Config.REVEAL_SCOPE.get();
+        if (scope == Config.RevealScope.GLOBAL) return store.isGloballyRevealed(dep.id());
+        if (scope == Config.RevealScope.TEAM) {
+            return anyRevealed(store,
+                    uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player), dep.id());
+        }
+        return false;
     }
 
     /**
@@ -361,7 +376,14 @@ public final class CoedepositsNetwork {
         // a slightly oversized backing array.
         List<DepositSnapshot> out = new ArrayList<>(deposits.size());
         var pid = player.getUUID();
-        boolean globalScope = Config.REVEAL_SCOPE.get() == Config.RevealScope.GLOBAL;
+        Config.RevealScope scope = Config.REVEAL_SCOPE.get();
+        boolean globalScope = scope == Config.RevealScope.GLOBAL;
+        // TEAM visibility is LIVE: a deposit is visible when the player or any
+        // CURRENT teammate revealed it — so joining a team shares past finds,
+        // leaving un-shares them (mirrors the GLOBAL live-switch semantics).
+        java.util.Set<java.util.UUID> mates = scope == Config.RevealScope.TEAM
+                ? uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player)
+                : java.util.Set.of();
         for (Deposit d : deposits) {
             // Look up the type's effective reveal mode. type may be null for
             // legacy SavedData entries whose typeId no longer exists in the
@@ -377,10 +399,20 @@ public final class CoedepositsNetwork {
             // scope is GLOBAL — under PER_PLAYER visibility is purely personal,
             // so flipping back hides shared discoveries again.
             boolean seen = store.isRevealed(pid, d.id())
-                    || (globalScope && store.isGloballyRevealed(d.id()));
+                    || (globalScope && store.isGloballyRevealed(d.id()))
+                    || (!mates.isEmpty() && anyRevealed(store, mates, d.id()));
             if (mode.isPerPlayer() && !seen) continue;
             out.add(DepositSnapshot.fromDeposit(lvl, d));
         }
         return out;
+    }
+
+    /** True when ANY of {@code players} has a personal reveal record for {@code depositId}. */
+    private static boolean anyRevealed(DepositSavedData store,
+                                       java.util.Set<java.util.UUID> players, java.util.UUID depositId) {
+        for (java.util.UUID p : players) {
+            if (store.isRevealed(p, depositId)) return true;
+        }
+        return false;
     }
 }
