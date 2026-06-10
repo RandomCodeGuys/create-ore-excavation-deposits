@@ -5,10 +5,11 @@ All notable changes to this project will be documented in this file.
 ## 0.1.7
 
 ### Changed
-- **Friendlier, configurable discovery chat message.** The old line printed the raw type id with a `[coedeposits]` prefix (`[coedeposits] discovered createoreexcavation:ore_vein_type/water at [...]`), which read like debug output (reported in #3). It now resolves a friendly name — the type's `display_name` from `deposits.json`, otherwise a prettified id (`createoreexcavation:ore_vein_type/water` → "Water") — and the whole line is a config template `discovery_message_format` (default `discovered %name% at %pos%`). Placeholders: `%name%`, `%pos%` (clickable /tp), `%x% %y% %z%`, `%type%`, `%%`; `§` colour codes work.
+- **Friendlier, configurable discovery chat message.** The old line printed the raw type id with a `[coedeposits]` prefix (`[coedeposits] discovered createoreexcavation:ore_vein_type/water at [...]`), which read like debug output (reported in #3). It now resolves a friendly name — the type's `display_name` from `deposits.json`, otherwise a prettified id (`createoreexcavation:ore_vein_type/water` → "Water") — and the whole line is a config template `discovery_message_format` (default `Discovered %name% at %pos%`). Placeholders: `%name%`, `%pos%` (clickable /tp), `%x% %y% %z%`, `%type%`, `%player%` (the discoverer), `%%`; `§` colour codes work.
 
 ### Fixed
 - **Deposits placed over already-explored terrain no longer read "depleted".** COE's `OreData.populate` runs once per chunk, so a deposit placed by `/coedeposits regenerate` or the prospect scanner over a chunk generated *before* the deposit existed never got its OreData applied. The depletion sweep now self-heals such chunks (no recipe **and** nothing extracted → re-apply) while leaving genuinely mined-out chunks alone.
+- **ON_DISCOVERY reveals are snappy now** — the walk-into sweep runs every second instead of every ten, so a deposit appears moments after you step onto it. The reveal-mode config option also finally documents what each of the four modes does.
 
 ### Added
 - **ON_PROXIMITY now sends a personal "found it" chat line** the first time a player comes within the proximity radius (same `discovery_message_format`; once per player per deposit, persisted). Visibility is unchanged — still distance-based.
