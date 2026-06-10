@@ -7,7 +7,11 @@ All notable changes to this project will be documented in this file.
 ### Changed
 - **Friendlier, configurable discovery chat message.** The old line printed the raw type id with a `[coedeposits]` prefix (`[coedeposits] discovered createoreexcavation:ore_vein_type/water at [...]`), which read like debug output (reported in #3). It now resolves a friendly name — the type's `display_name` from `deposits.json`, otherwise a prettified id (`createoreexcavation:ore_vein_type/water` → "Water") — and the whole line is a config template `discovery_message_format` (default `discovered %name% at %pos%`). Placeholders: `%name%`, `%pos%` (clickable /tp), `%x% %y% %z%`, `%type%`, `%%`; `§` colour codes work.
 
+### Fixed
+- **Deposits placed over already-explored terrain no longer read "depleted".** COE's `OreData.populate` runs once per chunk, so a deposit placed by `/coedeposits regenerate` or the prospect scanner over a chunk generated *before* the deposit existed never got its OreData applied. The depletion sweep now self-heals such chunks (no recipe **and** nothing extracted → re-apply) while leaving genuinely mined-out chunks alone.
+
 ### Added
+- **ON_PROXIMITY now sends a personal "found it" chat line** the first time a player comes within the proximity radius (same `discovery_message_format`; once per player per deposit, persisted). Visibility is unchanged — still distance-based.
 - **Discovery chat controls in the in-game config** — the **Reveal** group now has a **Discovery chat message** toggle (off keeps the map marker / Xaero waypoint, just no chat line) and a **Discovery message** template field, alongside the `discovery_chat` / `discovery_message_format` toml options (#3).
 - **`reveal_scope` config — per-player or shared discoveries (#3).** For the per-player reveal modes (`ON_DISCOVERY` / `ON_PROSPECT`): `PER_PLAYER` (default) keeps each player's discoveries private (COE's own behaviour); `GLOBAL` makes the first player's discovery reveal the deposit for everyone — synced to all players in the dimension plus a chat line crediting the finder via the new `%player%` placeholder. Persisted per deposit in SavedData; surfaced in the **Reveal** config group. (No effect on `ALWAYS` / `ON_PROXIMITY`.) Per-type override is not included yet — it's a mechanical follow-up.
 

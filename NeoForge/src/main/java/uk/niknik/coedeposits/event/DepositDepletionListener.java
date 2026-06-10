@@ -23,6 +23,7 @@ import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.deposit.Deposit;
 import uk.niknik.coedeposits.deposit.DepositType;
+import uk.niknik.coedeposits.gen.CoedepositsPicker;
 import uk.niknik.coedeposits.gen.DepositPlacer;
 import uk.niknik.coedeposits.gen.PickerInstaller;
 import uk.niknik.coedeposits.network.CoedepositsNetwork;
@@ -87,19 +88,36 @@ public final class DepositDepletionListener {
         // OreData isn't fully drained, so we don't pay for chunks still being
         // mined.
         if (tick % DEPLETION_INTERVAL_TICKS == 0) {
+            float edgeMul = Config.EDGE_AMOUNT_MUL.get().floatValue();
             for (ServerLevel lvl : PickerInstaller.enabledLevels(server)) {
                 DepositSavedData store = DepositSavedData.get(lvl);
                 if (store.all().isEmpty()) continue;
                 ServerChunkCache cache = lvl.getChunkSource();
+                long depositSeed = store.effectiveSeed(lvl);
 
                 for (Deposit dep : store.all().values()) {
+                    DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
                     for (ChunkPos cp : dep.chunks()) {
                         // getChunkNow returns null for unloaded chunks — they
                         // get checked on the next sweep that catches them
                         // loaded. No need to force-load just to inspect.
                         LevelChunk chunk = cache.getChunkNow(cp.x, cp.z);
                         if (chunk == null) continue;
-                        clearIfDepleted(lvl, chunk);
+                        OreData od = OreDataAttachment.getData(chunk);
+                        if (od.getRecipeId() == null) {
+                            // Self-heal: a deposit chunk with no recipe AND nothing
+                            // extracted was never applied — it was placed over an
+                            // already-populated chunk (e.g. /coedeposits regenerate
+                            // on explored terrain), so COE's populate (and our
+                            // chunk-load apply) never re-ran. Re-apply it. Genuinely
+                            // mined-out chunks (extracted > 0) stay depleted.
+                            if (type != null && !type.veinRecipes().isEmpty()
+                                    && CoedepositsPicker.getExtractedAmount(od) == 0L) {
+                                reapplyOreData(lvl, chunk, dep, type, depositSeed, edgeMul);
+                            }
+                        } else {
+                            clearIfDepleted(lvl, chunk);
+                        }
                     }
                 }
             }
@@ -270,6 +288,35 @@ public final class DepositDepletionListener {
                     "[coedeposits] replenished {} chunk {},{}: +{} units ({} → {} of {})",
                     dep.name(), chunk.getPos().x, chunk.getPos().z,
                     delta, remaining, newRemaining, total);
+        }
+    }
+
+    /**
+     * Re-apply a deposit chunk's OreData (self-heal for chunks placed over
+     * already-populated terrain that never got applied). Mirrors the picker's
+     * chunk-load apply: per-chunk recipe roll for MANAGED, first recipe for COE;
+     * filler rolls and unloaded recipes are skipped.
+     * {@link CoedepositsPicker#applyToOreData} resets extractedAmount to 0,
+     * which is correct here (the chunk was never mined).
+     */
+    private static void reapplyOreData(ServerLevel lvl, LevelChunk chunk, Deposit dep,
+                                       DepositType type, long depositSeed, float edgeMul) {
+        ResourceLocation recipeId;
+        if (dep.placement() == DepositType.Placement.COE) {
+            recipeId = type.veinRecipes().get(0).recipe();
+        } else {
+            java.util.Optional<ResourceLocation> rolled =
+                    DepositPlacer.rollChunkRecipe(type, depositSeed, chunk.getPos());
+            if (rolled.isEmpty()) return;  // filler — legitimately no ore
+            recipeId = rolled.get();
+        }
+        if (CoedepositsPicker.resolveRecipeValue(lvl, recipeId) == null) return;  // recipe not loaded
+        float perChunk = dep.amountMulFor(chunk.getPos(), edgeMul);
+        CoedepositsPicker.applyToOreData(chunk, recipeId, perChunk);
+        chunk.setUnsaved(true);
+        if (Config.LOG_DEPLETION.get()) {
+            Coedeposits.LOGGER.info("[coedeposits] healed unapplied chunk {},{} of {} ({})",
+                    chunk.getPos().x, chunk.getPos().z, dep.name(), recipeId);
         }
     }
 

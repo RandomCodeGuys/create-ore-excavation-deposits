@@ -220,6 +220,22 @@ public final class CoedepositsNetwork {
     }
 
     /**
+     * Chat-only "you found it" notice for ON_PROXIMITY — sent to one player the
+     * first time they come within the proximity radius. No visibility change
+     * (ON_PROXIMITY snapshots are always synced; the client filters by distance),
+     * so this is just the discovery chat line + best-effort Xaero waypoint.
+     */
+    public static void sendProximityNotice(ServerLevel lvl, ServerPlayer player, Deposit dep) {
+        BlockPos pos = new BlockPos(
+                dep.core().getMiddleBlockX(),
+                lvl.getSharedSpawnPos().getY(),
+                dep.core().getMiddleBlockZ());
+        sendDiscovery(player, new DepositDiscoveryPayload(
+                DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                pos, dep.typeId(), player.getName().getString()));
+    }
+
+    /**
      * Reveal-mode filter — produces the snapshot list a specific player is
      * allowed to see, given the current SavedData and reveal state. Used by
      * {@link #broadcastSyncFiltered}, {@link uk.niknik.coedeposits.event.PlayerJoinSyncListener}

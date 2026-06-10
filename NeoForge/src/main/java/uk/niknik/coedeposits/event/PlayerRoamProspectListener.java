@@ -124,23 +124,41 @@ public final class PlayerRoamProspectListener {
         // O(deposits) per player per check interval. Filters short-circuit in
         // this order: already-revealed > wrong-mode > out-of-range > network.
         // Most deposits hit "already revealed" fast and the loop body is cheap.
+        int proximityRadius = Config.PROXIMITY_REVEAL_BLOCKS.get();
+        long proximityRadiusSq = (long) proximityRadius * proximityRadius;
         for (Deposit dep : store.all().values()) {
-            // Filter 1: skip deposits this player already discovered.
+            // Filter 1: skip deposits this player already discovered (for
+            // ON_PROXIMITY the revealed set is just a "notified once" marker —
+            // visibility stays purely distance-based on the client).
             if (store.isRevealed(pid, dep.id())) continue;
-            // Filter 2: skip non-ON_DISCOVERY modes — ON_PROSPECT is handled
-            // by VeinFinderListener, ALWAYS/ON_PROXIMITY never need a reveal.
+            // Filter 2: mode dispatch — ON_PROSPECT is handled by
+            // VeinFinderListener, ALWAYS never needs a reveal.
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
             Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
-            if (mode != Config.RevealMode.ON_DISCOVERY) continue;
-            // Filter 3: spatial proximity to any of the deposit's chunks.
-            if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
-            // Trigger the reveal — revealAndNotify is idempotent (returns
-            // false if the reveal already happened in a race), so logging
-            // only fires on the genuine first discovery.
-            if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
-                if (Config.LOG_DISCOVERY.get()) {
-                    Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
-                            player.getName().getString(), dep.name());
+            if (mode == Config.RevealMode.ON_DISCOVERY) {
+                // Filter 3: spatial proximity to any of the deposit's chunks.
+                if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
+                // Trigger the reveal — revealAndNotify is idempotent (returns
+                // false if the reveal already happened in a race), so logging
+                // only fires on the genuine first discovery.
+                if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
+                    if (Config.LOG_DISCOVERY.get()) {
+                        Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
+                                player.getName().getString(), dep.name());
+                    }
+                }
+            } else if (mode == Config.RevealMode.ON_PROXIMITY) {
+                // Personal chat notice when the player first comes within the
+                // proximity radius (the same radius the map filter uses). Always
+                // per-player regardless of reveal_scope — proximity visibility is
+                // inherently personal-by-distance, the chat just mirrors it.
+                if (!withinAnyChunk(current, dep, proximityRadiusSq)) continue;
+                if (store.reveal(pid, dep.id())) {
+                    CoedepositsNetwork.sendProximityNotice(lvl, player, dep);
+                    if (Config.LOG_DISCOVERY.get()) {
+                        Coedeposits.LOGGER.info("[coedeposits] {} came near {} (proximity notice)",
+                                player.getName().getString(), dep.name());
+                    }
                 }
             }
         }
