@@ -9,6 +9,7 @@ import dev.isxander.yacl3.api.OptionDescription;
 import dev.isxander.yacl3.api.OptionGroup;
 import dev.isxander.yacl3.api.controller.EnumControllerBuilder;
 import dev.isxander.yacl3.api.controller.IntegerFieldControllerBuilder;
+import dev.isxander.yacl3.api.controller.StringControllerBuilder;
 
 import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.client.config.Bindings;
@@ -23,12 +24,32 @@ public final class RevealGroup {
 
         Option<Config.RevealMode> revealMode = Option.<Config.RevealMode>createBuilder()
                 .name(Component.literal("Reveal mode"))
-                .description(OptionDescription.of(Component.literal("Default map-reveal policy when a type does not override `reveal`.")))
+                .description(OptionDescription.of(Component.literal(
+                        "Default reveal policy when a deposit type doesn't override it.\n"
+                        + "ALWAYS: visible to everyone immediately (+ chat).\n"
+                        + "ON_DISCOVERY: hidden until a player walks within the discovery radius (~1s sweep).\n"
+                        + "ON_PROXIMITY: only shown while a player is within the proximity radius.\n"
+                        + "ON_PROSPECT: hidden until a player's COE Vein Finder resolves to it (needs the item, not just standing on it).")))
                 .binding(Config.REVEAL_MODE.getDefault(), Config.REVEAL_MODE::get, v -> Bindings.persist(Config.REVEAL_MODE, v, "Reveal mode"))
                 .controller(o -> EnumControllerBuilder.create(o).enumClass(Config.RevealMode.class)
                         .formatValue(e -> Component.literal(e.getSerializedName())))
                 .build();
         group.option(revealMode);
+
+        Option<Config.RevealScope> revealScope = Option.<Config.RevealScope>createBuilder()
+                .name(Component.literal("Reveal scope"))
+                .description(OptionDescription.of(Component.literal(
+                        "For ON_DISCOVERY / ON_PROSPECT modes:\n"
+                        + "PER_PLAYER: each player discovers for themselves (COE-like).\n"
+                        + "TEAM: a discovery is shared with the discoverer's party/team (Open Parties and Claims, else FTB Teams, else the vanilla scoreboard team).\n"
+                        + "GLOBAL: the first player's discovery reveals it for everyone.\n"
+                        + "No effect on ALWAYS / ON_PROXIMITY.")))
+                .binding(Config.REVEAL_SCOPE.getDefault(), Config.REVEAL_SCOPE::get,
+                        v -> Bindings.persist(Config.REVEAL_SCOPE, v, "Reveal scope"))
+                .controller(o -> EnumControllerBuilder.create(o).enumClass(Config.RevealScope.class)
+                        .formatValue(e -> Component.literal(e.getSerializedName())))
+                .build();
+        group.option(revealScope);
 
         Option<Integer> proximity = Option.<Integer>createBuilder()
                 .name(Component.literal("Proximity reveal blocks"))
@@ -47,6 +68,20 @@ public final class RevealGroup {
                         .formatValue(i -> Component.literal(String.format(Locale.ROOT, "%d", i))))
                 .build();
         group.option(discovery);
+
+        group.option(Bindings.toggle("Discovery chat message",
+                "Show a chat line when a deposit is discovered. Off = no chat (the map marker / Xaero waypoint still appear).",
+                Config.DISCOVERY_CHAT));
+
+        Option<String> discoveryFormat = Option.<String>createBuilder()
+                .name(Component.literal("Discovery message"))
+                .description(OptionDescription.of(Component.literal(
+                        "Template for the discovery chat line. Placeholders: %name% %pos% %x% %y% %z% %type% %%. § colour codes work.")))
+                .binding(Config.DISCOVERY_MESSAGE_FORMAT.getDefault(), Config.DISCOVERY_MESSAGE_FORMAT::get,
+                        v -> Bindings.persist(Config.DISCOVERY_MESSAGE_FORMAT, v, "Discovery message"))
+                .controller(StringControllerBuilder::create)
+                .build();
+        group.option(discoveryFormat);
 
         return group.build();
     }

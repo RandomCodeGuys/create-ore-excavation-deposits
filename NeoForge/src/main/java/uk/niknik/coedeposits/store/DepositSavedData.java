@@ -56,6 +56,8 @@ public class DepositSavedData extends SavedData {
     private final Map<Long, UUID> chunkIndex = new HashMap<>();
     /** Per-player set of deposit ids the player has revealed (ON_DISCOVERY / ON_PROSPECT). */
     private final Map<UUID, Set<UUID>> revealed = new HashMap<>();
+    /** Deposit ids revealed for EVERYONE — a GLOBAL-scope reveal trigger fired for them. */
+    private final Set<UUID> globallyRevealed = new HashSet<>();
     /** Optional override for the placement seed; absent means "use the world seed". */
     private Optional<Long> depositSeed = Optional.empty();
 
@@ -72,11 +74,14 @@ public class DepositSavedData extends SavedData {
      * optional so SavedData files predating per-player tracking and the
      * seed override still load.
      */
-    private record Storage(List<Deposit> all, List<RevealEntry> revealedEntries, Optional<Long> depositSeed) {
+    private record Storage(List<Deposit> all, List<RevealEntry> revealedEntries,
+                           List<UUID> globallyRevealed, Optional<Long> depositSeed) {
         static final Codec<Storage> CODEC = RecordCodecBuilder.create(b -> b.group(
                 Codec.list(Deposit.CODEC).fieldOf("deposits").forGetter(Storage::all),
                 Codec.list(RevealEntry.CODEC).optionalFieldOf("revealed", List.of())
                         .forGetter(Storage::revealedEntries),
+                Codec.list(UUIDUtil.CODEC).optionalFieldOf("globally_revealed", List.of())
+                        .forGetter(Storage::globallyRevealed),
                 Codec.LONG.optionalFieldOf("deposit_seed").forGetter(Storage::depositSeed)
         ).apply(b, Storage::new));
     }
@@ -110,6 +115,8 @@ public class DepositSavedData extends SavedData {
                     for (RevealEntry e : s.revealedEntries()) {
                         out.revealed.put(e.player(), new HashSet<>(e.deposits()));
                     }
+                    // ── Step 2b: restore the global-reveal set ──────────────
+                    out.globallyRevealed.addAll(s.globallyRevealed());
                     // ── Step 3: restore the optional deposit-seed override ──
                     out.depositSeed = s.depositSeed();
                 });
@@ -134,7 +141,8 @@ public class DepositSavedData extends SavedData {
         // the picker might be mutating concurrently in pathological races
         // (chunk-load on another thread under c2me). Cheap enough to not bother
         // with a read lock.
-        Storage payload = new Storage(new ArrayList<>(deposits.values()), revealedFlat, depositSeed);
+        Storage payload = new Storage(new ArrayList<>(deposits.values()), revealedFlat,
+                new ArrayList<>(globallyRevealed), depositSeed);
         Tag encoded = Storage.CODEC.encodeStart(NbtOps.INSTANCE, payload).getOrThrow();
         // tag.merge so NeoForge's outer wrapper fields (typically nothing for
         // SavedData but defensive against future framework additions) survive.
@@ -289,6 +297,7 @@ public class DepositSavedData extends SavedData {
             chunkIndex.computeIfPresent(cp.toLong(),
                     (k, owner) -> owner.equals(depositId) ? null : owner);
         }
+        globallyRevealed.remove(depositId);
         setDirty();
         return removed;
     }
@@ -338,6 +347,7 @@ public class DepositSavedData extends SavedData {
         java.util.List<UUID> ids = new ArrayList<>(deposits.keySet());
         deposits.clear();
         chunkIndex.clear();
+        globallyRevealed.clear();
         setDirty();
         return ids;
     }
@@ -363,6 +373,22 @@ public class DepositSavedData extends SavedData {
     public boolean isRevealed(UUID playerId, UUID depositId) {
         Set<UUID> set = revealed.get(playerId);
         return set != null && set.contains(depositId);
+    }
+
+    /**
+     * Mark this deposit revealed for EVERYONE (a GLOBAL-scope reveal trigger).
+     * Returns true when it wasn't already globally revealed, so the caller can
+     * drive a one-shot broadcast. Marks the SavedData dirty on change.
+     */
+    public boolean revealGlobal(UUID depositId) {
+        boolean added = globallyRevealed.add(depositId);
+        if (added) setDirty();
+        return added;
+    }
+
+    /** Is this deposit revealed for everyone (a GLOBAL-scope reveal fired)? */
+    public boolean isGloballyRevealed(UUID depositId) {
+        return globallyRevealed.contains(depositId);
     }
 
     /** Unmodifiable view of the player's revealed-deposit set (empty if never revealed anything). */

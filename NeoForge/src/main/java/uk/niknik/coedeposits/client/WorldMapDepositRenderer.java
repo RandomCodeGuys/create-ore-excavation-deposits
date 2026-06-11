@@ -69,6 +69,11 @@ public final class WorldMapDepositRenderer {
             double mapScale, double cameraX, double cameraZ,
             int mouseBlockX, int mouseBlockZ) {
 
+        // Reset the share-keybind handoff every frame; Phase 7 re-sets it while
+        // a deposit is actually hovered, so it can never go stale.
+        shareHoveredScreen = null;
+        shareHoveredId = null;
+
         // ── Phase 1: cheap early-exits ──────────────────────────────────────
         // Both guards avoid the per-frame pose-stack setup cost when there's
         // nothing to draw.
@@ -248,11 +253,24 @@ public final class WorldMapDepositRenderer {
         // pose was popped first. Lines are built from the deposit metadata
         // + per-chunk remaining via buildTooltip.
         if (hovered != null) {
+            // Hand the hovered deposit to the share keybind (CoedepositsClientEvents
+            // polls hoveredDepositId on consumeClick).
+            shareHoveredScreen = screen;
+            shareHoveredId = hovered.id();
             List<FormattedCharSequence> lines = buildTooltip(hovered, hoveredChunkLong).stream()
                     .map(Component::getVisualOrderText)
                     .toList();
             graphics.renderTooltip(mc.font, lines, mouseX, mouseY);
         }
+    }
+
+    /** Hovered-deposit handoff to the share keybind: written every frame by render(). */
+    private static volatile Screen shareHoveredScreen = null;
+    private static volatile java.util.UUID shareHoveredId = null;
+
+    /** Deposit id under the mouse when {@code screen} is the live map screen, else null. */
+    public static java.util.UUID hoveredDepositId(Screen screen) {
+        return screen != null && screen == shareHoveredScreen ? shareHoveredId : null;
     }
 
     /** Build the multi-line hover tooltip for the chunk under the mouse. */
@@ -264,7 +282,8 @@ public final class WorldMapDepositRenderer {
         // display names without hardcoding strings — falls back to the raw
         // typeId when no translation exists for the player's locale.
         String key = "deposit." + d.typeId().getNamespace() + "." + d.typeId().getPath();
-        out.add(Component.translatableWithFallback(key, prettyTypeName(d.typeId()))
+        out.add(Component.translatableWithFallback(key,
+                uk.niknik.coedeposits.deposit.DepositType.prettyTypeName(d.typeId()))
                 .copy().withStyle(ChatFormatting.GOLD));
 
         // ── Phase 2: location line (extracted from deposit name) ────────────
@@ -410,6 +429,15 @@ public final class WorldMapDepositRenderer {
         else                       remainLine.withStyle(ChatFormatting.GREEN);
         out.add(remainLine);
 
+        // Share-keybind hint — only when the player has actually bound the key
+        // (default is unbound), so the tooltip doesn't advertise a dead button.
+        if (!CoedepositsClientEvents.SHARE_DEPOSIT.isUnbound()) {
+            out.add(Component.literal("[")
+                    .append(CoedepositsClientEvents.SHARE_DEPOSIT.getTranslatedKeyMessage())
+                    .append(Component.literal("] share to chat"))
+                    .withStyle(ChatFormatting.DARK_GRAY, ChatFormatting.ITALIC));
+        }
+
         return out;
     }
 
@@ -479,31 +507,6 @@ public final class WorldMapDepositRenderer {
         // own getString() — gives us the localised result if a key exists,
         // or the fallback string otherwise. Cheap (no rendering, just lookup).
         return Component.translatableWithFallback(key, fallback).getString();
-    }
-
-    /**
-     * Readable fallback name for a deposit-type id when no translation exists —
-     * used for the tooltip title. Handles auto-adopted COE veins whose typeId is
-     * the raw vein id (e.g. {@code createoreexcavation:ore_vein_type/redstone}):
-     * strips the {@code ore_vein_type/} folder + trailing {@code _vein}, turns
-     * underscores into spaces and title-cases. {@code coedeposits:iron} → "Iron",
-     * the redstone vein → "Redstone".
-     */
-    private static String prettyTypeName(net.minecraft.resources.ResourceLocation typeId) {
-        String path = typeId.getPath();
-        int slash = path.lastIndexOf('/');
-        if (slash >= 0) path = path.substring(slash + 1);
-        if (path.endsWith("_vein")) path = path.substring(0, path.length() - "_vein".length());
-        path = path.replace('_', ' ').trim();
-        if (path.isEmpty()) return typeId.toString();
-        StringBuilder sb = new StringBuilder(path.length());
-        boolean cap = true;
-        for (char c : path.toCharArray()) {
-            if (c == ' ') { cap = true; sb.append(c); }
-            else if (cap) { sb.append(Character.toUpperCase(c)); cap = false; }
-            else sb.append(c);
-        }
-        return sb.toString();
     }
 
     /**

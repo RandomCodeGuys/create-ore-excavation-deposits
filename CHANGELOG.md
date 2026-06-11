@@ -16,10 +16,25 @@ A unification + compatibility release: one ownership model for every deposit, au
 - **KubeJS support — deposit types.** With KubeJS installed, define deposit types from `kubejs/startup_scripts` via the `CoeDeposits` binding: `CoeDeposits.add('mypack:ruby', { vein_recipes:[...], weight:80, distance:{min:2000,max:99999}, ... })`. The object is the standard `deposit_type` schema; scripted types merge between the datapack defaults and the `deposits.json` overlay. KubeJS is an optional dependency — the mod runs fine without it. (COE's own vein/drilling/extracting recipes remain scriptable through COE's KubeJS plugin.)
 
 ### Fixed
-- **Deposits placed over already-explored terrain no longer read "depleted".** COE's `OreData.populate` runs once per chunk, so a deposit placed by `/coedeposits regenerate` or the prospect scanner over a chunk that was generated *before* the deposit existed never got its OreData applied (populate doesn't re-run). The depletion sweep now self-heals such chunks (recipe missing **and** nothing extracted → re-apply) while leaving genuinely mined-out chunks alone. A chunk whose vein recipe is set but unresolvable now reads "vein recipe not loaded" instead of a misleading "depleted".
+- **A chunk whose vein recipe is set but unresolvable now reads "vein recipe not loaded"** on the map tooltip instead of a misleading "depleted" (the underlying never-applied-OreData self-heal shipped in 0.1.7).
 
 ### Notes
 - Auto-adopt and the unified model are most predictable on fresh chunks. Foreign COE veins already generated in old chunks (before this version) appear once their chunk loads (the self-heal applies them within ~1s) or after a re-prospect.
+
+## 0.1.7
+
+### Changed
+- **Friendlier, configurable discovery chat message.** The old line printed the raw type id with a `[coedeposits]` prefix (`[coedeposits] discovered createoreexcavation:ore_vein_type/water at [...]`), which read like debug output (reported in #3). It now resolves a friendly name — the type's `display_name` from `deposits.json`, otherwise a prettified id (`createoreexcavation:ore_vein_type/water` → "Water") — and the whole line is a config template `discovery_message_format` (default `Discovered %name% at %pos%`). Placeholders: `%name%`, `%pos%` (clickable /tp), `%x% %y% %z%`, `%type%`, `%player%` (the discoverer), `%%`; `§` colour codes work.
+
+### Fixed
+- **Deposits placed over already-explored terrain no longer read "depleted".** COE's `OreData.populate` runs once per chunk, so a deposit placed by `/coedeposits regenerate` or the prospect scanner over a chunk generated *before* the deposit existed never got its OreData applied. The depletion sweep now self-heals such chunks (no recipe **and** nothing extracted → re-apply) while leaving genuinely mined-out chunks alone.
+- **ON_DISCOVERY reveals are snappy now** — the walk-into sweep runs every second instead of every ten, so a deposit appears moments after you step onto it. The reveal-mode config option also finally documents what each of the four modes does.
+
+### Added
+- **ON_PROXIMITY now sends a personal "found it" chat line** the first time a player comes within the proximity radius (same `discovery_message_format`; once per player per deposit, persisted). Visibility is unchanged — still distance-based.
+- **Discovery chat controls in the in-game config** — the **Reveal** group now has a **Discovery chat message** toggle (off keeps the map marker / Xaero waypoint, just no chat line) and a **Discovery message** template field, alongside the `discovery_chat` / `discovery_message_format` toml options (#3).
+- **`reveal_scope` config — per-player, team, or shared discoveries (#3).** For the per-player reveal modes (`ON_DISCOVERY` / `ON_PROSPECT`): `PER_PLAYER` (default) keeps each player's discoveries private (COE's own behaviour); `TEAM` shares discoveries with the discoverer's party/team — **Open Parties and Claims**, else **FTB Teams**, else the vanilla scoreboard team (both mod integrations are reflection-based, no hard dependency). Team visibility is **live**: you see everything anyone *currently* on your team has discovered — joining a team shares past finds both ways, leaving un-shares them (your own finds always stay). `GLOBAL` makes the first player's discovery reveal the deposit for everyone. Online recipients get the marker + a chat line crediting the finder via the new `%player%` placeholder. Persisted in SavedData; surfaced in the **Reveal** config group. (No effect on `ALWAYS` / `ON_PROXIMITY`.) Per-type override is not included yet — it's a mechanical follow-up.
+- **Deposit sharing (#3).** Players can share discoveries explicitly, in three ways: **`/coedeposits share`** — posts a clickable **[✚ Add to map]** offer to chat (everyone in the dimension can click it to add the deposit to their map + Xaero waypoint); **`/coedeposits share <player>`** / **`share all <player>`** — share the deposit you stand in (or everything you've discovered) directly with one player; **world-map keybind** — bind *"Share hovered deposit to chat"* in Options → Controls, hover a deposit on the Xaero world map and press it to post the same clickable offer (the tooltip shows the hint once the key is bound). You can only share deposits you can see; the share/accept commands work without OP (admin subcommands remain OP-gated).
 
 ## 0.1.6-1
 

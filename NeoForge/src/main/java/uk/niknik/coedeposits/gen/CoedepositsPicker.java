@@ -654,7 +654,9 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                 dep.core().getMiddleBlockZ());
         CoedepositsNetwork.broadcastDiscovery(
                 lvl.getServer(),
-                new DepositDiscoveryPayload(dep.name(), pos, dep.typeId()));
+                new DepositDiscoveryPayload(
+                        DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                        pos, dep.typeId(), ""));
     }
 
     /**

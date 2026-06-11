@@ -56,6 +56,26 @@ public class Config {
         }
     }
 
+    /**
+     * Scope of a per-player reveal trigger (ON_DISCOVERY walk-into / ON_PROSPECT
+     * vein-finder): {@link #PER_PLAYER} keeps each player's discoveries private
+     * (COE's own behaviour), {@link #TEAM} shares them with the discoverer's
+     * party/team (Open Parties and Claims → FTB Teams → vanilla scoreboard team),
+     * {@link #GLOBAL} shares the first player's discovery with everyone. No
+     * effect on ALWAYS (already global) or ON_PROXIMITY (a client-side distance
+     * filter).
+     */
+    public enum RevealScope implements StringRepresentable {
+        PER_PLAYER, TEAM, GLOBAL;
+
+        public static final Codec<RevealScope> CODEC = StringRepresentable.fromEnum(RevealScope::values);
+
+        @Override
+        public String getSerializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -182,6 +202,49 @@ public class Config {
                     "  ON_PROXIMITY — visible only while player is within proximity_reveal_blocks.",
                     "  ON_PROSPECT  — hidden until the player uses a Vein Finder that resolves to it.")
             .defineEnum("reveal_mode", RevealMode.ALWAYS);
+
+    /**
+     * Scope of per-player reveal triggers (ON_DISCOVERY / ON_PROSPECT):
+     * PER_PLAYER (default, COE-like — each player discovers for themselves) or
+     * GLOBAL (the first player's discovery reveals the deposit for everyone).
+     * No effect on ALWAYS or ON_PROXIMITY.
+     */
+    public static final ModConfigSpec.EnumValue<RevealScope> REVEAL_SCOPE = BUILDER
+            .comment("Scope of a per-player reveal (ON_DISCOVERY / ON_PROSPECT):",
+                    "  PER_PLAYER — each player must discover/prospect a deposit themselves (COE-like).",
+                    "  TEAM       — a discovery is shared with the discoverer's party/team",
+                    "               (Open Parties and Claims, else FTB Teams, else the vanilla scoreboard team).",
+                    "  GLOBAL     — the first player to discover/prospect it reveals it for everyone.",
+                    "No effect on ALWAYS (already global) or ON_PROXIMITY (client-side distance filter).")
+            .defineEnum("reveal_scope", RevealScope.PER_PLAYER);
+
+    /**
+     * Whether to show the chat line when a deposit is discovered (ALWAYS
+     * placement, or a per-player reveal). Off = the deposit still appears on the
+     * map / Xaero waypoint, just without the chat notification. Read client-side
+     * in {@link uk.niknik.coedeposits.compat.xaero.XaeroBridge}.
+     */
+    public static final ModConfigSpec.BooleanValue DISCOVERY_CHAT = BUILDER
+            .comment("Show a chat message when a deposit is discovered.",
+                    "Off = no chat line (the map marker / waypoint still appears). Default on.")
+            .define("discovery_chat", true);
+
+    /**
+     * Format string for the discovery chat line. Placeholders: {@code %name%}
+     * (friendly deposit name — the type's display_name or a prettified id),
+     * {@code %pos%} (clickable coordinate that suggests {@code /tp}),
+     * {@code %x% %y% %z%} (raw numbers), {@code %type%} (raw type id), {@code %%}
+     * (literal percent). Minecraft {@code §} colour codes work in the literal text.
+     */
+    public static final ModConfigSpec.ConfigValue<String> DISCOVERY_MESSAGE_FORMAT = BUILDER
+            .comment("Discovery chat message template. Placeholders:",
+                    "  %name% — friendly name (display_name or prettified id)",
+                    "  %pos%  — clickable coordinate (suggests /tp)",
+                    "  %x% %y% %z% — raw coordinate numbers",
+                    "  %type% — raw type id (e.g. createoreexcavation:ore_vein_type/iron)",
+                    "  %player% — discoverer's name (only for GLOBAL reveal_scope; empty otherwise)",
+                    "  %% — a literal percent sign. § colour codes are supported.")
+            .define("discovery_message_format", "Discovered %name% at %pos%");
 
     /**
      * Block-radius for {@link RevealMode#ON_PROXIMITY}. Client-side filter

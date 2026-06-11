@@ -54,6 +54,27 @@ public final class CoedepositsNetwork {
                 DepositRemovePayload.TYPE,
                 DepositRemovePayload.STREAM_CODEC,
                 CoedepositsNetwork::handleRemoval);
+        reg.playToServer(
+                DepositSharePayload.TYPE,
+                DepositSharePayload.STREAM_CODEC,
+                CoedepositsNetwork::handleShareRequest);
+    }
+
+    /**
+     * Server-side: a client pressed the share keybind on a hovered deposit.
+     * Validate the deposit exists and the sender can see it (anti-probe — a
+     * hacked client must not enumerate hidden deposits by spamming UUIDs),
+     * then broadcast the clickable chat offer.
+     */
+    private static void handleShareRequest(DepositSharePayload payload, IPayloadContext ctx) {
+        ctx.enqueueWork(() -> {
+            if (!(ctx.player() instanceof ServerPlayer sp)) return;
+            ServerLevel lvl = sp.serverLevel();
+            DepositSavedData store = DepositSavedData.get(lvl);
+            Deposit dep = store.all().get(payload.depositId());
+            if (dep == null || !canSee(store, sp, dep)) return;
+            broadcastShareOffer(lvl, sp, dep);
+        });
     }
 
     /** Client-side: enqueue chat + Xaero waypoint attempt onto main thread. */
@@ -133,16 +154,33 @@ public final class CoedepositsNetwork {
         // once outside the player loop to avoid repeated DataStorage lookups.
         DepositSavedData store = DepositSavedData.get(lvl);
 
-        // ── Step 2: per-player tailored sync ────────────────────────────────
+        // ── Step 2: per-player tailored sync + reconcile ────────────────────
         // Each player gets a different snapshot list because reveal state is
-        // per-player. We skip:
-        //   - players in other dimensions (their cache holds other dims' data)
-        //   - players whose visible list is empty (no point sending an empty packet)
+        // per-player. Players in other dimensions are skipped (their cache holds
+        // other dims' data). Because the client MERGES syncs and never drops on
+        // its own, hiding needs an explicit removal: every per-player-mode
+        // deposit NOT in the player's visible set gets a removal each sweep.
+        // That covers all the live transitions — GLOBAL→PER_PLAYER un-sharing,
+        // leaving a TEAM, scope flips. Removals for ids a client never cached
+        // are a cheap no-op.
         for (ServerPlayer p : server.getPlayerList().getPlayers()) {
             if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
             var visible = buildVisible(lvl, store, p, deposits);
-            if (visible.isEmpty()) continue;
-            PacketDistributor.sendToPlayer(p, new DepositSyncPayload(visible));
+            if (!visible.isEmpty()) {
+                PacketDistributor.sendToPlayer(p, new DepositSyncPayload(visible));
+            }
+            java.util.Set<java.util.UUID> visIds = new java.util.HashSet<>();
+            for (DepositSnapshot s : visible) visIds.add(s.id());
+            List<java.util.UUID> hide = new ArrayList<>();
+            for (Deposit d : deposits) {
+                if (visIds.contains(d.id())) continue;
+                DepositType type = Coedeposits.DEPOSIT_TYPES.get(d.typeId());
+                Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
+                if (mode.isPerPlayer()) hide.add(d.id());
+            }
+            if (!hide.isEmpty()) {
+                PacketDistributor.sendToPlayer(p, new DepositRemovePayload(hide));
+            }
         }
     }
 
@@ -155,29 +193,168 @@ public final class CoedepositsNetwork {
      * @return  true when a fresh reveal happened (caller may want to log)
      */
     public static boolean revealAndNotify(ServerLevel lvl, ServerPlayer player, Deposit dep) {
-        // ── Step 1: claim the reveal (idempotent) ───────────────────────────
-        // store.reveal returns false when the player already had this deposit
-        // marked revealed — we bail without sending duplicate packets, so the
-        // ON_DISCOVERY / ON_PROSPECT listeners can call this every tick
-        // without spamming the client.
+        // ── Step 1: claim the reveal (idempotent), honouring reveal_scope ───
+        // Always record the discoverer's PERSONAL reveal — so if reveal_scope is
+        // later switched to PER_PLAYER, players keep the deposits they found
+        // themselves (GLOBAL just layers "visible to everyone" on top). We bail
+        // when there's nothing new to announce, so the ON_DISCOVERY / ON_PROSPECT
+        // listeners can call this every tick without spamming.
         DepositSavedData store = DepositSavedData.get(lvl);
-        if (!store.reveal(player.getUUID(), dep.id())) return false;
+        Config.RevealScope scope = Config.REVEAL_SCOPE.get();
+        boolean global = scope == Config.RevealScope.GLOBAL;
+        java.util.Set<java.util.UUID> mates = scope == Config.RevealScope.TEAM
+                ? uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player)
+                : java.util.Set.of();
+        // Was the deposit already visible to this player BEFORE this trigger?
+        // (personally revealed, team-visible via a teammate's record, or globally
+        // revealed). If so there's nothing to announce — but we still record the
+        // personal find below, so the player keeps it after leaving the team.
+        boolean wasVisible = store.isRevealed(player.getUUID(), dep.id())
+                || (scope == Config.RevealScope.TEAM && anyRevealed(store, mates, dep.id()));
+        store.reveal(player.getUUID(), dep.id());
+        if (global) {
+            // Announce on the FIRST global reveal only — once globally revealed,
+            // every other trigger (this or another player) bails: all already see it.
+            if (!store.revealGlobal(dep.id())) return false;
+        } else if (wasVisible) {
+            return false;
+        }
 
-        // ── Step 2: push the deposit snapshot to the player's cache ─────────
-        // Without this the marker wouldn't appear on the map until the next
-        // 5-second re-sync from DepositDepletionListener — too laggy for a
-        // "just discovered it!" UX moment.
-        sendSync(player, new DepositSyncPayload(List.of(DepositSnapshot.fromDeposit(lvl, dep))));
-
-        // ── Step 3: chat-style discovery packet (gold message + waypoint) ──
-        // Coord Y uses spawn Y so the resulting `/tp` suggestion is at a
-        // sensible elevation rather than the chunk-core's possibly-weird Y.
+        // ── Step 2: build the snapshot + discovery packet ───────────────────
+        // Coord Y uses spawn Y so the `/tp` suggestion lands at a sensible
+        // elevation rather than the chunk-core's possibly-weird Y. %player% is
+        // the discoverer's name (used by GLOBAL "X discovered Y" formats).
+        String name = DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId());
         BlockPos pos = new BlockPos(
                 dep.core().getMiddleBlockX(),
                 lvl.getSharedSpawnPos().getY(),
                 dep.core().getMiddleBlockZ());
-        sendDiscovery(player, new DepositDiscoveryPayload(dep.name(), pos, dep.typeId()));
+        DepositDiscoveryPayload discovery =
+                new DepositDiscoveryPayload(name, pos, dep.typeId(), player.getName().getString());
+        DepositSnapshot snap = DepositSnapshot.fromDeposit(lvl, dep);
+
+        // ── Step 3: deliver — everyone (GLOBAL), the team (TEAM), or just this
+        // player (PER_PLAYER). Clients with discovery_chat off still get the
+        // marker (the chat line is suppressed client-side).
+        if (global) {
+            for (ServerPlayer p : lvl.getServer().getPlayerList().getPlayers()) {
+                if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
+                sendSync(p, new DepositSyncPayload(List.of(snap)));
+                sendDiscovery(p, discovery);
+            }
+        } else if (scope == Config.RevealScope.TEAM) {
+            // Visibility under TEAM is LIVE (buildVisible unions the team's
+            // records), so no records are copied — just push the one-shot
+            // marker + chat to the discoverer and the online teammates in this
+            // dimension. Offline teammates see it on join; new teammates inherit
+            // it via the live union; leaving the team un-shares it.
+            sendSync(player, new DepositSyncPayload(List.of(snap)));
+            sendDiscovery(player, discovery);
+            for (java.util.UUID mate : mates) {
+                ServerPlayer mp = lvl.getServer().getPlayerList().getPlayer(mate);
+                if (mp != null && mp.serverLevel().dimension().equals(lvl.dimension())) {
+                    sendSync(mp, new DepositSyncPayload(List.of(snap)));
+                    sendDiscovery(mp, discovery);
+                }
+            }
+        } else {
+            sendSync(player, new DepositSyncPayload(List.of(snap)));
+            sendDiscovery(player, discovery);
+        }
         return true;
+    }
+
+    /**
+     * Can this player currently see {@code dep} (i.e. is it on their map)?
+     * Mirrors {@link #buildVisible}'s per-deposit predicate. Used to gate the
+     * share actions — you can only share what you can see.
+     */
+    public static boolean canSee(DepositSavedData store, ServerPlayer player, Deposit dep) {
+        DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
+        Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
+        if (!mode.isPerPlayer()) return true;
+        if (store.isRevealed(player.getUUID(), dep.id())) return true;
+        Config.RevealScope scope = Config.REVEAL_SCOPE.get();
+        if (scope == Config.RevealScope.GLOBAL) return store.isGloballyRevealed(dep.id());
+        if (scope == Config.RevealScope.TEAM) {
+            return anyRevealed(store,
+                    uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player), dep.id());
+        }
+        return false;
+    }
+
+    /**
+     * Reveal {@code dep} for {@code to} because {@code from} shared it (direct
+     * {@code /coedeposits share <player>} or a clicked chat offer). Idempotent:
+     * returns false when the target already had it. On a fresh share, pushes the
+     * marker sync + the discovery chat line (with {@code %player%} = the sharer,
+     * so templates read "Dev shared/discovered Iron …") + Xaero waypoint.
+     */
+    public static boolean shareWith(ServerLevel lvl, String sharerName, ServerPlayer to, Deposit dep) {
+        DepositSavedData store = DepositSavedData.get(lvl);
+        if (!store.reveal(to.getUUID(), dep.id())) return false;
+        sendSync(to, new DepositSyncPayload(List.of(DepositSnapshot.fromDeposit(lvl, dep))));
+        BlockPos pos = new BlockPos(
+                dep.core().getMiddleBlockX(),
+                lvl.getSharedSpawnPos().getY(),
+                dep.core().getMiddleBlockZ());
+        sendDiscovery(to, new DepositDiscoveryPayload(
+                DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                pos, dep.typeId(), sharerName));
+        return true;
+    }
+
+    /**
+     * Broadcast a clickable share offer to every player in the dimension:
+     * "<sharer> shares <Name> at [x, ~, z]  [+ Add to map]". Clicking the button
+     * runs {@code /coedeposits accept <id>}, which reveals the deposit for the
+     * clicking player ({@link #shareWith}). This is the chat-button flow behind
+     * the world-map share keybind and {@code /coedeposits share} with no target.
+     */
+    public static void broadcastShareOffer(ServerLevel lvl, ServerPlayer sharer, Deposit dep) {
+        String name = DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId());
+        int x = dep.core().getMiddleBlockX();
+        int z = dep.core().getMiddleBlockZ();
+        net.minecraft.network.chat.MutableComponent line = net.minecraft.network.chat.Component
+                .literal(sharer.getName().getString())
+                .withStyle(net.minecraft.ChatFormatting.GREEN)
+                .append(net.minecraft.network.chat.Component.literal(" shares ")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY))
+                .append(net.minecraft.network.chat.Component.literal(name)
+                        .withStyle(net.minecraft.ChatFormatting.GOLD))
+                .append(net.minecraft.network.chat.Component.literal(" at ")
+                        .withStyle(net.minecraft.ChatFormatting.GRAY))
+                .append(net.minecraft.network.chat.Component.literal(String.format("[%d, ~, %d]", x, z))
+                        .withStyle(net.minecraft.ChatFormatting.YELLOW))
+                .append(net.minecraft.network.chat.Component.literal("  [✚ Add to map]")
+                        .withStyle(s -> s.withColor(net.minecraft.ChatFormatting.AQUA)
+                                .withClickEvent(new net.minecraft.network.chat.ClickEvent(
+                                        net.minecraft.network.chat.ClickEvent.Action.RUN_COMMAND,
+                                        "/coedeposits accept " + dep.id()))
+                                .withHoverEvent(new net.minecraft.network.chat.HoverEvent(
+                                        net.minecraft.network.chat.HoverEvent.Action.SHOW_TEXT,
+                                        net.minecraft.network.chat.Component.literal(
+                                                "Add this deposit to your map")))));
+        for (ServerPlayer p : lvl.getServer().getPlayerList().getPlayers()) {
+            if (!p.serverLevel().dimension().equals(lvl.dimension())) continue;
+            p.sendSystemMessage(line);
+        }
+    }
+
+    /**
+     * Chat-only "you found it" notice for ON_PROXIMITY — sent to one player the
+     * first time they come within the proximity radius. No visibility change
+     * (ON_PROXIMITY snapshots are always synced; the client filters by distance),
+     * so this is just the discovery chat line + best-effort Xaero waypoint.
+     */
+    public static void sendProximityNotice(ServerLevel lvl, ServerPlayer player, Deposit dep) {
+        BlockPos pos = new BlockPos(
+                dep.core().getMiddleBlockX(),
+                lvl.getSharedSpawnPos().getY(),
+                dep.core().getMiddleBlockZ());
+        sendDiscovery(player, new DepositDiscoveryPayload(
+                DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                pos, dep.typeId(), player.getName().getString()));
     }
 
     /**
@@ -199,6 +376,14 @@ public final class CoedepositsNetwork {
         // a slightly oversized backing array.
         List<DepositSnapshot> out = new ArrayList<>(deposits.size());
         var pid = player.getUUID();
+        Config.RevealScope scope = Config.REVEAL_SCOPE.get();
+        boolean globalScope = scope == Config.RevealScope.GLOBAL;
+        // TEAM visibility is LIVE: a deposit is visible when the player or any
+        // CURRENT teammate revealed it — so joining a team shares past finds,
+        // leaving un-shares them (mirrors the GLOBAL live-switch semantics).
+        java.util.Set<java.util.UUID> mates = scope == Config.RevealScope.TEAM
+                ? uk.niknik.coedeposits.compat.TeamBridge.teammatesOf(player)
+                : java.util.Set.of();
         for (Deposit d : deposits) {
             // Look up the type's effective reveal mode. type may be null for
             // legacy SavedData entries whose typeId no longer exists in the
@@ -209,10 +394,25 @@ public final class CoedepositsNetwork {
             // Only the per-player modes (ON_DISCOVERY / ON_PROSPECT) gate
             // visibility on the reveal record. ALWAYS and ON_PROXIMITY always
             // include the snapshot — proximity filtering happens client-side
-            // at render time, not in this server-side filter.
-            if (mode.isPerPlayer() && !store.isRevealed(pid, d.id())) continue;
+            // at render time, not in this server-side filter. A GLOBAL-scope
+            // reveal makes a deposit visible to everyone, but ONLY while the
+            // scope is GLOBAL — under PER_PLAYER visibility is purely personal,
+            // so flipping back hides shared discoveries again.
+            boolean seen = store.isRevealed(pid, d.id())
+                    || (globalScope && store.isGloballyRevealed(d.id()))
+                    || (!mates.isEmpty() && anyRevealed(store, mates, d.id()));
+            if (mode.isPerPlayer() && !seen) continue;
             out.add(DepositSnapshot.fromDeposit(lvl, d));
         }
         return out;
+    }
+
+    /** True when ANY of {@code players} has a personal reveal record for {@code depositId}. */
+    private static boolean anyRevealed(DepositSavedData store,
+                                       java.util.Set<java.util.UUID> players, java.util.UUID depositId) {
+        for (java.util.UUID p : players) {
+            if (store.isRevealed(p, depositId)) return true;
+        }
+        return false;
     }
 }
