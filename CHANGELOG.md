@@ -20,6 +20,7 @@ A unification + compatibility release: one ownership model for every deposit, au
 - **A chunk whose vein recipe is set but unresolvable now reads "vein recipe not loaded"** on the map tooltip instead of a misleading "depleted" (the underlying never-applied-OreData self-heal shipped in 0.1.7).
 
 ### Notes
+- **Upgrading from 0.1.x:** base-COE veins switch off on upgrade (`coe_veins_disabled_by_default` arrives as `true`). Veins already placed in your world stay tracked and minable — only **new** placements stop; run `/coedeposits regenerate` for a clean slate, or flip the config / `enabled_veins` to keep them spawning.
 - Auto-adopt and the unified model are most predictable on fresh chunks. Foreign COE veins already generated in old chunks (before this version) appear once their chunk loads (the self-heal applies them within ~1s) or after a re-prospect.
 
 ## 0.1.7
