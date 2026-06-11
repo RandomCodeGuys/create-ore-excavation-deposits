@@ -95,6 +95,14 @@ public final class DepositListScreen {
         // creates a placement=coe type (id = vein id, so already-placed adopted
         // deposits upgrade seamlessly) and opens its editor.
         List<String> adoptable = DepositBindings.adoptableVeinIds();
+        if (adoptable.isEmpty() && mc.getConnection() == null) {
+            // COE vein recipes come from the client's recipe manager, which only
+            // exists in a world. From the title screen the list would be silently
+            // empty — say so instead of hiding the section.
+            cat.option(DepositRowController.row(
+                    Component.literal("§8— enter a world to list COE veins (adopted / disabled) —"),
+                    List.of()));
+        }
         if (!adoptable.isEmpty()) {
             cat.option(DepositRowController.row(
                     Component.literal("§8— COE veins without a deposit_type: adopted add-on/datapack veins + base-COE (off by default) —"),
