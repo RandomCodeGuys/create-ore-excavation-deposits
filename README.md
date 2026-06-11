@@ -373,7 +373,9 @@ The object is the exact `deposit_type` schema documented above. Scripted types m
 | `discovery_radius_blocks` | 24 | Trigger radius for `ON_DISCOVERY` — the player must come this close to any chunk of the deposit. |
 | `enabled_dimensions` | `[overworld, the_nether, the_end]` | Dimensions where the mod is active. Others fall through to vanilla COE behaviour. |
 | `auto_adopt_coe_veins` | `true` | Adopt COE vein recipes that have no coedeposits `deposit_type` (from add-ons / datapacks) onto the world map: we own their OreData, track and render them like declared deposits. Off = they stay pure vanilla COE (generate but invisible to our map/finder). |
-| `disabled_veins` | `[]` | COE vein recipe ids to **suppress** entirely — they won't generate or be adopted. Managed by the in-game editor (Deposits → adopted → Disable), e.g. `createoreexcavation:ore_vein_type/water`. (Managed coedeposits ores are turned off by disabling their `deposit_type` instead.) |
+| `disabled_veins` | `[]` | COE vein recipe ids to **disable** explicitly — they won't generate or be adopted. Managed by the in-game editor (Deposits → vein → Disable). (Managed coedeposits ores are turned off by disabling their `deposit_type` instead.) |
+| `coe_veins_disabled_by_default` | `true` | Disable the **base** Create Ore Excavation mod's bundled veins (`createoreexcavation:*`) by default — this mod's managed deposits replace them, so both generating would duplicate every ore. Add-on/datapack veins (other namespaces) are unaffected and still auto-adopt. A promoted (declared) type referencing a base vein overrides the disable. |
+| `enabled_veins` | `[]` | Per-vein exceptions to `coe_veins_disabled_by_default` — base-COE vein ids listed here are active again. Managed by the editor's **Enable** button on a default-disabled vein. |
 
 ### Client-side — `coedeposits-client.toml`
 

@@ -344,6 +344,37 @@ public class Config {
                     () -> "createoreexcavation:ore_vein_type/example",
                     o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
 
+    /**
+     * When true (default), the BASE Create Ore Excavation mod's bundled veins
+     * ({@code createoreexcavation:*}) start <b>disabled</b> — coedeposits ships
+     * managed deposit types that replace their role, so letting them also
+     * generate would duplicate every ore. Veins from add-ons / datapacks (any
+     * other namespace) are unaffected: they were added intentionally, not as a
+     * dependency side-effect, and keep adopting as usual. A disabled base vein
+     * can be re-enabled per-id ({@link #ENABLED_VEINS} / the editor's Enable
+     * button) or revived wholesale by turning this off.
+     */
+    public static final ModConfigSpec.BooleanValue COE_VEINS_DISABLED_BY_DEFAULT = BUILDER
+            .comment("Disable the BASE Create Ore Excavation mod's bundled veins (createoreexcavation:*)",
+                    "by default — coedeposits' managed deposits replace them, so both generating would",
+                    "duplicate every ore. Veins from add-ons/datapacks (other namespaces) are unaffected",
+                    "and still auto-adopt. Re-enable single base veins via enabled_veins / the in-game",
+                    "editor's Enable button, or set this to false to bring them all back. Default true.")
+            .define("coe_veins_disabled_by_default", true);
+
+    /**
+     * Per-vein exceptions to {@link #COE_VEINS_DISABLED_BY_DEFAULT}: base-COE
+     * vein ids listed here are active again (generate + adopt). Managed by the
+     * in-game editor's Enable button on a default-disabled vein.
+     */
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> ENABLED_VEINS = BUILDER
+            .comment("Base-COE vein recipe ids re-enabled despite coe_veins_disabled_by_default.",
+                    "Format: list of vein recipe ids, e.g. \"createoreexcavation:ore_vein_type/water\".",
+                    "Usually managed via the in-game editor (Deposits tab -> disabled vein -> Enable).")
+            .defineListAllowEmpty("enabled_veins", List.of(),
+                    () -> "createoreexcavation:ore_vein_type/example",
+                    o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
+
     // ═══════════════════════════════════════════════════════════════════════
     // Logging toggles — granular on/off for each log category. Bypasses
     // log4j2 level filtering for our package, so admins can enable specific
@@ -431,9 +462,30 @@ public class Config {
         return enabledDimensions().contains(dim);
     }
 
-    /** True when a COE vein recipe id is in the {@link #DISABLED_VEINS} suppression list. */
+    /** Namespace of the base Create Ore Excavation mod's bundled vein recipes. */
+    public static final String COE_NAMESPACE = "createoreexcavation";
+
+    /** True when {@code veinId} belongs to the BASE COE mod (not an add-on/datapack). */
+    public static boolean isCoeBundledVein(ResourceLocation veinId) {
+        return COE_NAMESPACE.equals(veinId.getNamespace());
+    }
+
+    /**
+     * Effective disabled state of a COE vein recipe: explicitly listed in
+     * {@link #DISABLED_VEINS}, or a base-COE vein under
+     * {@link #COE_VEINS_DISABLED_BY_DEFAULT} that hasn't been re-enabled via
+     * {@link #ENABLED_VEINS}. Callers that honour declared deposit_types must
+     * additionally let a declared reference override this (promoting a vein in
+     * the editor is explicit intent) — see the picker / prospect gates.
+     */
     public static boolean isVeinDisabled(ResourceLocation veinId) {
-        List<? extends String> list = DISABLED_VEINS.get();
-        return !list.isEmpty() && list.contains(veinId.toString());
+        String id = veinId.toString();
+        List<? extends String> off = DISABLED_VEINS.get();
+        if (!off.isEmpty() && off.contains(id)) return true;
+        if (COE_VEINS_DISABLED_BY_DEFAULT.get() && isCoeBundledVein(veinId)) {
+            List<? extends String> on = ENABLED_VEINS.get();
+            return on.isEmpty() || !on.contains(id);
+        }
+        return false;
     }
 }

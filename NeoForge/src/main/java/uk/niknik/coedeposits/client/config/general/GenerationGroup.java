@@ -100,6 +100,13 @@ public final class GenerationGroup {
                 .build();
         group.option(chunksPerTick);
 
+        group.option(Bindings.toggle("Disable base COE veins",
+                "Disable the base Create Ore Excavation mod's own veins by default — this mod's managed "
+                + "deposits replace them, so both generating would duplicate every ore. Add-on/datapack "
+                + "veins are unaffected and still auto-adopt. Re-enable single veins from the Deposits "
+                + "tab (Enable / Edit →).",
+                Config.COE_VEINS_DISABLED_BY_DEFAULT));
+
         group.option(dimensionsButton());
 
         return group.build();

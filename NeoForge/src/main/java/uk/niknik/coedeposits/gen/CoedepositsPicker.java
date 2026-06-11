@@ -246,9 +246,13 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             return null;
         }
 
-        // Step 3b.5: suppressed vein — admin disabled it (editor "Disable" or the
-        // disabled_veins config). Return null so COE doesn't place it at all.
-        if (Config.isVeinDisabled(chosenVein)) {
+        // Step 3b.5: disabled vein — explicitly via editor/disabled_veins, or a
+        // base-COE vein under coe_veins_disabled_by_default. A DECLARED type
+        // referencing the vein overrides this (promoting a vein in the editor is
+        // explicit intent to have it generate). Return null so COE doesn't place
+        // it at all.
+        ResourceLocation declaredCoeTypeId = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(chosenVein);
+        if (declaredCoeTypeId == null && Config.isVeinDisabled(chosenVein)) {
             return null;
         }
 
@@ -258,7 +262,7 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
         // and persist a single-chunk deposit so it shows on the map. Honour the
         // per-type dimensions allow-list — a COE entry restricted to specific
         // dims won't be tracked outside them (implicit types are dim-agnostic).
-        ResourceLocation coeTypeId = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(chosenVein);
+        ResourceLocation coeTypeId = declaredCoeTypeId;
         DepositType coeType;
         if (coeTypeId != null) {
             coeType = Coedeposits.DEPOSIT_TYPES.get(coeTypeId);

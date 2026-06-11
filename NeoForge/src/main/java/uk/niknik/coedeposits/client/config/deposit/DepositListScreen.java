@@ -97,28 +97,35 @@ public final class DepositListScreen {
         List<String> adoptable = DepositBindings.adoptableVeinIds();
         if (!adoptable.isEmpty()) {
             cat.option(DepositRowController.row(
-                    Component.literal("§8— adopted: COE veins from other mods/datapacks (no type yet) —"),
+                    Component.literal("§8— COE veins without a deposit_type: adopted add-on/datapack veins + base-COE (off by default) —"),
                     List.of()));
             for (String veinId : adoptable) {
-                boolean disabled = Config.DISABLED_VEINS.get().contains(veinId);
-                String suffix = disabled ? "  §c(disabled)§r" : "  §6(adopted)§r";
+                // Effective state: explicit disabled_veins entry, OR a base-COE
+                // vein under coe_veins_disabled_by_default that hasn't been
+                // re-enabled. The suffix distinguishes the two so admins see WHY.
+                net.minecraft.resources.ResourceLocation rl =
+                        net.minecraft.resources.ResourceLocation.tryParse(veinId);
+                boolean explicitOff = Config.DISABLED_VEINS.get().contains(veinId);
+                boolean disabled = explicitOff || (rl != null && Config.isVeinDisabled(rl));
+                String suffix = !disabled ? "  §6(adopted)§r"
+                        : explicitOff ? "  §c(disabled)§r" : "  §c(disabled — base COE default)§r";
                 List<DepositRowController.Action> acts = new ArrayList<>();
+                // Edit → promote to a placement=coe type you control. Available in
+                // BOTH states — a declared type overrides the disable, so promoting
+                // a default-off base-COE vein brings it back under your control.
+                acts.add(new DepositRowController.Action(
+                        Component.literal("Edit →"),
+                        () -> {
+                            Draft d = DepositBindings.adoptDraft(veinId);
+                            DepositBindings.drafts.add(0, d);
+                            DepositBindings.persist();
+                            mc.setScreen(DepositDetailScreen.create(d, rebuild.get()));
+                        }));
                 if (disabled) {
-                    // Suppressed via Disable — only offer re-enable.
                     acts.add(new DepositRowController.Action(
                             Component.literal("✔ Enable"),
                             () -> { setVeinDisabled(veinId, false); mc.setScreen(rebuild.get()); }));
                 } else {
-                    // Edit → promote to a placement=coe type you control (same as
-                    // the old Customize). Disable → suppress the vein entirely.
-                    acts.add(new DepositRowController.Action(
-                            Component.literal("Edit →"),
-                            () -> {
-                                Draft d = DepositBindings.adoptDraft(veinId);
-                                DepositBindings.drafts.add(0, d);
-                                DepositBindings.persist();
-                                mc.setScreen(DepositDetailScreen.create(d, rebuild.get()));
-                            }));
                     acts.add(new DepositRowController.Action(
                             Component.literal("⊘ Disable"),
                             () -> { setVeinDisabled(veinId, true); mc.setScreen(rebuild.get()); }));
@@ -131,15 +138,32 @@ public final class DepositListScreen {
         return cat.build();
     }
 
-    /** Add or remove a vein id in the {@link Config#DISABLED_VEINS} suppression list and flush to disk. */
+    /**
+     * Flip a vein's enabled state and flush the config. Namespace-aware: a
+     * base-COE vein under the default-off rule toggles via the
+     * {@link Config#ENABLED_VEINS} exception list (Enable adds, Disable removes);
+     * any other vein toggles via {@link Config#DISABLED_VEINS} as before. Both
+     * lists are kept free of the id on the opposite action so they stay disjoint.
+     */
     private static void setVeinDisabled(String veinId, boolean disabled) {
-        List<String> cur = new ArrayList<>(Config.DISABLED_VEINS.get());
-        if (disabled) {
-            if (!cur.contains(veinId)) cur.add(veinId);
+        net.minecraft.resources.ResourceLocation rl =
+                net.minecraft.resources.ResourceLocation.tryParse(veinId);
+        boolean coeDefaultOff = rl != null && Config.isCoeBundledVein(rl)
+                && Config.COE_VEINS_DISABLED_BY_DEFAULT.get();
+
+        List<String> off = new ArrayList<>(Config.DISABLED_VEINS.get());
+        List<String> on = new ArrayList<>(Config.ENABLED_VEINS.get());
+        if (coeDefaultOff) {
+            if (disabled) on.remove(veinId);
+            else if (!on.contains(veinId)) on.add(veinId);
+            off.remove(veinId);  // default rule covers the off-state; keep the explicit list clean
         } else {
-            cur.remove(veinId);
+            if (disabled) { if (!off.contains(veinId)) off.add(veinId); }
+            else off.remove(veinId);
+            on.remove(veinId);
         }
-        Config.DISABLED_VEINS.set(cur);
+        Config.DISABLED_VEINS.set(off);
+        Config.ENABLED_VEINS.set(on);
         Config.SPEC.save();
     }
 }
