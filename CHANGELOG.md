@@ -16,8 +16,13 @@ A unification + compatibility release: one ownership model for every deposit, au
 - **Input / coolant fluid on recipes (like the host mod).** Inline `drilling:` and `fluid:` blocks accept an optional `fluid_input` (`{fluid|tag, amount}`) — the fluid the machine **consumes** per cycle (COE's `drillingFluid`, recipe key `"fluid"`). Lets you express fluid-gated recipes such as the CoE × Mekanism datapack's Brine / Sulfuric-Acid drilling bonuses, or a coolant requirement. Editable in the in-game editor (both the Drilling and Fluid groups).
 - **KubeJS support — deposit types.** With KubeJS installed, define deposit types from `kubejs/startup_scripts` via the `CoeDeposits` binding: `CoeDeposits.add('mypack:ruby', { vein_recipes:[...], weight:80, distance:{min:2000,max:99999}, ... })`. The object is the standard `deposit_type` schema; scripted types merge between the datapack defaults and the `deposits.json` overlay. KubeJS is an optional dependency — the mod runs fine without it. (COE's own vein/drilling/extracting recipes remain scriptable through COE's KubeJS plugin.)
 
+- **The bundled water deposit is renamed `coedeposits:example_water` → `coedeposits:water`** (its synthesised recipes likewise `example_water_vein/extracting` → `water_vein/extracting`). Existing worlds with placed `example_water` deposits will drop them on upgrade — re-run `/coedeposits regenerate` if you want the renamed one back.
+- **`auto_adopt_coe_veins` is now in the in-game config** (Generation group), next to the new "Disable base COE veins" toggle — previously only editable in the toml.
+
 ### Fixed
 - **A chunk whose vein recipe is set but unresolvable now reads "vein recipe not loaded"** on the map tooltip instead of a misleading "depleted" (the underlying never-applied-OreData self-heal shipped in 0.1.7).
+- **Editor: an input fluid (`fluid_input`) set on a drilling/extracting block now persists** even when the block has no other content yet — picking the fluid marks its block active, so it's written to `deposits.json` instead of being dropped on save.
+- **Editor: picking a fluid no longer bounces you back to the Core tab** — the editor reopens on the Inline-recipe tab you were on.
 
 ### Notes
 - **Upgrading from 0.1.x:** base-COE veins switch off on upgrade (`coe_veins_disabled_by_default` arrives as `true`). Veins already placed in your world stay tracked and minable — only **new** placements stop; run `/coedeposits regenerate` for a clean slate, or flip the config / `enabled_veins` to keep them spawning.

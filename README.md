@@ -143,7 +143,7 @@ Example — an underground water spring, drilled in swamp biomes:
 
 (For a modded fluid, pick its bucket in the editor's item picker rather than guessing the id. `minecraft:lava` is the other vanilla source fluid.)
 
-> **Bundled example.** The mod ships a ready `coedeposits:example_water` deposit — a finite "Underground Spring" of `minecraft:water` extracted with COE's Extractor — so the fluid path works the moment you install the mod. It generates in overworld swamp/plains biomes at `weight: 50`; turn it off from the in-game editor (or a `{"enabled": false}` overlay) if you don't want it. Note it ships as plain **datapack** files (`deposit_type/example_water.json` + `recipe/example_water_{vein,extracting}.json`), *not* an inline `fluid:` block — a datapack-supplied type must reference real recipes, since inline synthesis only runs for the config overlay.
+> **Bundled example.** The mod ships a ready `coedeposits:water` deposit — a finite "Underground Spring" of `minecraft:water` extracted with COE's Extractor — so the fluid path works the moment you install the mod. It generates in overworld swamp/plains biomes at `weight: 50`; turn it off from the in-game editor (or a `{"enabled": false}` overlay) if you don't want it. Note it ships as plain **datapack** files (`deposit_type/water.json` + `recipe/water_{vein,extracting}.json`), *not* an inline `fluid:` block — a datapack-supplied type must reference real recipes, since inline synthesis only runs for the config overlay.
 
 ### Recipe id derivation
 

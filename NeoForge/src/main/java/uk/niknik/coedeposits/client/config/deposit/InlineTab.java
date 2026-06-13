@@ -172,8 +172,10 @@ public final class InlineTab {
                         s, d.drilling.fluidInput, picked -> {
                             d.drilling.fluidInput = picked;
                             d.drilling.hasFluidInput = true;
+                            d.hasDrilling = true;  // ensure the drilling block (with fluid_input) is written
                             DepositBindings.persist();
-                            Minecraft.getInstance().setScreen(DepositDetailScreen.create(d, back));
+                            Minecraft.getInstance().setScreen(
+                                    DepositDetailScreen.create(d, back, DepositDetailScreen.INLINE_TAB));
                         })))
                 .build();
         drilling.option(drillFluidPick);
@@ -213,7 +215,8 @@ public final class InlineTab {
                             d.extracting.fluid = picked;
                             d.hasExtracting = true;
                             DepositBindings.persist();
-                            Minecraft.getInstance().setScreen(DepositDetailScreen.create(d, back));
+                            Minecraft.getInstance().setScreen(
+                                    DepositDetailScreen.create(d, back, DepositDetailScreen.INLINE_TAB));
                         })))
                 .build();
         fluid.option(fluidPick);
@@ -265,8 +268,10 @@ public final class InlineTab {
                         s, d.extracting.fluidInput, picked -> {
                             d.extracting.fluidInput = picked;
                             d.extracting.hasFluidInput = true;
+                            d.hasExtracting = true;  // ensure the extracting block (with fluid_input) is written
                             DepositBindings.persist();
-                            Minecraft.getInstance().setScreen(DepositDetailScreen.create(d, back));
+                            Minecraft.getInstance().setScreen(
+                                    DepositDetailScreen.create(d, back, DepositDetailScreen.INLINE_TAB));
                         })))
                 .build();
         fluid.option(exFluidPick);
