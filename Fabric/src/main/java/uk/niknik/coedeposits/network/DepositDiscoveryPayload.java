@@ -17,11 +17,13 @@ import uk.niknik.coedeposits.Coedeposits;
  * decodes + dispatches to
  * {@link uk.niknik.coedeposits.client.ClientPayloadHandler#handleDiscovery}.
  *
- * @param name    server-generated deposit label (used in chat)
+ * @param name    friendly deposit name (used as %name% in chat)
  * @param pos     core position to teleport to / show on the waypoint
  * @param typeId  deposit type id (used for the localized name and color)
+ * @param player  the discovering player's name for a GLOBAL-scope reveal
+ *                (used as %player% in chat), or empty for ALWAYS placements
  */
-public record DepositDiscoveryPayload(String name, BlockPos pos, ResourceLocation typeId) {
+public record DepositDiscoveryPayload(String name, BlockPos pos, ResourceLocation typeId, String player) {
 
     /** Fabric play channel id for this payload. */
     public static final ResourceLocation CHANNEL = new ResourceLocation(Coedeposits.MODID, "discovery");
@@ -30,12 +32,14 @@ public record DepositDiscoveryPayload(String name, BlockPos pos, ResourceLocatio
         buf.writeUtf(name);
         buf.writeBlockPos(pos);
         buf.writeResourceLocation(typeId);
+        buf.writeUtf(player);
     }
 
     public static DepositDiscoveryPayload decode(FriendlyByteBuf buf) {
         String name = buf.readUtf();
         BlockPos pos = buf.readBlockPos();
         ResourceLocation typeId = buf.readResourceLocation();
-        return new DepositDiscoveryPayload(name, pos, typeId);
+        String player = buf.readUtf();
+        return new DepositDiscoveryPayload(name, pos, typeId, player);
     }
 }

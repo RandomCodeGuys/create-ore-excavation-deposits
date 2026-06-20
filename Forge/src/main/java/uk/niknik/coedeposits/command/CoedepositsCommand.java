@@ -13,7 +13,9 @@ import com.mojang.brigadier.context.CommandContext;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.SharedSuggestionProvider;
+import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
+import net.minecraft.commands.arguments.UuidArgument;
 import net.minecraft.commands.arguments.coordinates.BlockPosArgument;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
@@ -59,29 +61,49 @@ import com.tom.createores.OreDataCapability;
 public final class CoedepositsCommand {
     private CoedepositsCommand() {}
 
+    /** OP / cheat-mode gate applied per admin subcommand (the root stays open for share/accept). */
+    private static final java.util.function.Predicate<CommandSourceStack> OP =
+            s -> s.hasPermission(2);
+
     /** Register the full subcommand tree onto the server's brigadier dispatcher. */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         // Brigadier-style fluent build: each .then() adds a child node. The
-        // tree's `requires(hasPermission(2))` at the root means every subcommand
-        // inherits the OP/cheat-mode gate — players without permission don't
-        // even see the command in tab-complete.
+        // OP/cheat-mode gate sits on each ADMIN subcommand (not the root) so the
+        // player-facing share/accept pair works for everyone — accept must be
+        // runnable from a clickable chat component by any player.
         dispatcher.register(Commands.literal("coedeposits")
-                .requires(s -> s.hasPermission(2))
 
-                // ── Read-only inspection subcommands ────────────────────────
-                // No-arg commands that print info to the invoker's chat. Cheap,
-                // no state mutation, useful for debugging deposit layout.
-                .then(Commands.literal("tier").executes(CoedepositsCommand::cmdTier))
-                .then(Commands.literal("list").executes(CoedepositsCommand::cmdList))
-                .then(Commands.literal("here").executes(CoedepositsCommand::cmdHere))
-                .then(Commands.literal("seed").executes(CoedepositsCommand::cmdSeed))
+                // ── Player-facing sharing ───────────────────────────────────
+                // share              — clickable chat offer for the deposit you stand in
+                // share <player>     — share that deposit directly with one player
+                // share all <player> — share everything YOU have discovered
+                // accept <id>        — used by the [+ Add to map] chat button
+                .then(Commands.literal("share")
+                        .executes(CoedepositsCommand::cmdShareChat)
+                        .then(Commands.argument("player", EntityArgument.player())
+                                .executes(c -> cmdShareTo(c, false)))
+                        .then(Commands.literal("all")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(c -> cmdShareTo(c, true)))))
+                .then(Commands.literal("accept")
+                        .then(Commands.argument("id", UuidArgument.uuid())
+                                .executes(CoedepositsCommand::cmdAccept)))
+
+                // ── Read-only inspection subcommands (OP) ───────────────────
+                // No-arg commands that print info to the invoker's chat. Gated
+                // because list/types/here leak deposits hidden by per-player reveal.
+                .then(Commands.literal("tier").requires(OP).executes(CoedepositsCommand::cmdTier))
+                .then(Commands.literal("list").requires(OP).executes(CoedepositsCommand::cmdList))
+                .then(Commands.literal("types").requires(OP).executes(CoedepositsCommand::cmdTypes))
+                .then(Commands.literal("here").requires(OP).executes(CoedepositsCommand::cmdHere))
+                .then(Commands.literal("seed").requires(OP).executes(CoedepositsCommand::cmdSeed))
 
                 // ── Scan / refill (re-create OreData without wiping) ────────
                 // scan: extend the prospect search around the player.
                 // refill: restore extractedAmount for loaded chunks (one
                 //   deposit by default, all with the `all` suffix).
-                .then(Commands.literal("scan").executes(CoedepositsCommand::cmdScan))
-                .then(Commands.literal("refill")
+                .then(Commands.literal("scan").requires(OP).executes(CoedepositsCommand::cmdScan))
+                .then(Commands.literal("refill").requires(OP)
                         .executes(c -> cmdRefill(c, false))
                         .then(Commands.literal("all").executes(c -> cmdRefill(c, true))))
 
@@ -91,10 +113,10 @@ public final class CoedepositsCommand {
                 //                deposit if it was the last chunk).
                 // regenerate   — wipe the dimension and re-prospect.
                 //                Optional `<seed>` arg locks the placement RNG.
-                .then(Commands.literal("delete")
+                .then(Commands.literal("delete").requires(OP)
                         .then(Commands.literal("here").executes(CoedepositsCommand::cmdDeleteHere))
                         .then(Commands.literal("chunk").executes(CoedepositsCommand::cmdDeleteChunk)))
-                .then(Commands.literal("regenerate")
+                .then(Commands.literal("regenerate").requires(OP)
                         .executes(c -> cmdRegenerate(c, null))
                         .then(Commands.argument("seed", LongArgumentType.longArg())
                                 .executes(c -> cmdRegenerate(c, LongArgumentType.getLong(c, "seed")))))
@@ -103,7 +125,7 @@ public final class CoedepositsCommand {
                 // /coedeposits replenish <rate>          — set on the deposit at the player's chunk
                 // /coedeposits replenish all <rate>      — set on every deposit in the current dim
                 // rate=0 clears the override (deposit falls back to type default)
-                .then(Commands.literal("replenish")
+                .then(Commands.literal("replenish").requires(OP)
                         .then(Commands.argument("rate", DoubleArgumentType.doubleArg(0.0))
                                 .executes(c -> cmdReplenish(c,
                                         DoubleArgumentType.getDouble(c, "rate"), false)))
@@ -124,7 +146,7 @@ public final class CoedepositsCommand {
                 // Brigadier dispatches to the deepest matching .executes(),
                 // so each call shape lands in the same doPlace() with the
                 // appropriate zero-defaults for missing args.
-                .then(Commands.literal("place")
+                .then(Commands.literal("place").requires(OP)
                         .executes(c -> doPlace(c, null, null, 0, 0))
                         .then(Commands.argument("type", ResourceLocationArgument.id())
                                 // Tab-complete: suggest known deposit type ids.
@@ -151,6 +173,200 @@ public final class CoedepositsCommand {
                                                                 IntegerArgumentType.getInteger(c, "amount"),
                                                                 IntegerArgumentType.getInteger(c, "chunks"))))))))
         );
+    }
+
+    /**
+     * /coedeposits share — broadcast a clickable [+ Add to map] offer for the
+     * deposit the player is standing in. Open to all players; you can only
+     * share a deposit you can currently see.
+     */
+    private static int cmdShareChat(CommandContext<CommandSourceStack> ctx) {
+        var src = ctx.getSource();
+        ServerPlayer p = src.getPlayer();
+        if (p == null) {
+            src.sendFailure(Component.literal("must be a player"));
+            return 0;
+        }
+        ServerLevel lvl = p.serverLevel();
+        DepositSavedData store = DepositSavedData.get(lvl);
+        Deposit d = store.lookup(new ChunkPos(p.blockPosition()));
+        if (d == null || !CoedepositsNetwork.canSee(store, p, d)) {
+            src.sendFailure(Component.literal(
+                    "stand inside a deposit you have discovered to share it"));
+            return 0;
+        }
+        CoedepositsNetwork.broadcastShareOffer(lvl, p, d);
+        return 1;
+    }
+
+    /**
+     * /coedeposits share &lt;player&gt; — share the deposit you stand in with one
+     * player. /coedeposits share all &lt;player&gt; — share every deposit YOU have
+     * discovered in this dimension with them.
+     */
+    private static int cmdShareTo(CommandContext<CommandSourceStack> ctx, boolean all) {
+        var src = ctx.getSource();
+        ServerPlayer p = src.getPlayer();
+        if (p == null) {
+            src.sendFailure(Component.literal("must be a player"));
+            return 0;
+        }
+        ServerPlayer target;
+        try {
+            target = EntityArgument.getPlayer(ctx, "player");
+        } catch (com.mojang.brigadier.exceptions.CommandSyntaxException e) {
+            src.sendFailure(Component.literal("unknown player"));
+            return 0;
+        }
+        if (target == p) {
+            src.sendFailure(Component.literal("you already see your own discoveries"));
+            return 0;
+        }
+        ServerLevel lvl = p.serverLevel();
+        DepositSavedData store = DepositSavedData.get(lvl);
+        String sharer = p.getName().getString();
+
+        int shared = 0;
+        if (all) {
+            // Everything the SENDER has personally discovered in this dimension.
+            for (UUID id : store.revealedFor(p.getUUID())) {
+                Deposit d = store.all().get(id);
+                if (d != null && CoedepositsNetwork.shareWith(lvl, sharer, target, d)) shared++;
+            }
+        } else {
+            Deposit d = store.lookup(new ChunkPos(p.blockPosition()));
+            if (d == null || !CoedepositsNetwork.canSee(store, p, d)) {
+                src.sendFailure(Component.literal(
+                        "stand inside a deposit you have discovered to share it"));
+                return 0;
+            }
+            if (CoedepositsNetwork.shareWith(lvl, sharer, target, d)) shared++;
+        }
+        final int fShared = shared;
+        src.sendSuccess(() -> Component.literal(
+                "shared " + fShared + " deposit(s) with " + target.getName().getString()), false);
+        return shared;
+    }
+
+    /**
+     * /coedeposits accept &lt;id&gt; — entry point of the clickable chat offer.
+     * Reveals the deposit for the CLICKING player (the offer was public, so no
+     * further permission needed). Quietly tolerates an already-known deposit.
+     */
+    private static int cmdAccept(CommandContext<CommandSourceStack> ctx) {
+        var src = ctx.getSource();
+        ServerPlayer p = src.getPlayer();
+        if (p == null) {
+            src.sendFailure(Component.literal("must be a player"));
+            return 0;
+        }
+        UUID id = UuidArgument.getUuid(ctx, "id");
+        ServerLevel lvl = p.serverLevel();
+        Deposit d = DepositSavedData.get(lvl).all().get(id);
+        if (d == null) {
+            src.sendFailure(Component.literal("that deposit no longer exists"));
+            return 0;
+        }
+        if (!CoedepositsNetwork.shareWith(lvl, p.getName().getString(), p, d)) {
+            src.sendSuccess(() -> Component.literal("already on your map"), false);
+        }
+        return 1;
+    }
+
+    /**
+     * Roster of deposit <b>types</b> in the current dimension — declared (managed
+     * / coe) plus auto-<b>adopted</b> foreign COE veins — with how many of each
+     * are placed. The audit view for "what did auto_adopt_coe_veins pull onto my
+     * map". (Per-dimension, like {@code list}/{@code here}.)
+     */
+    private static int cmdTypes(CommandContext<CommandSourceStack> ctx) {
+        var src = ctx.getSource();
+        ServerPlayer p = src.getPlayer();
+        if (p == null) {
+            src.sendFailure(Component.literal("must be a player"));
+            return 0;
+        }
+        ServerLevel lvl = p.serverLevel();
+        ResourceLocation dim = lvl.dimension().location();
+        DepositSavedData store = DepositSavedData.get(lvl);
+
+        // Count placed deposits per type id in this dimension, ordered by id.
+        java.util.Comparator<ResourceLocation> byId = java.util.Comparator.comparing(ResourceLocation::toString);
+        java.util.Map<ResourceLocation, Integer> counts = new java.util.TreeMap<>(byId);
+        for (Deposit d : store.all().values()) {
+            counts.merge(d.typeId(), 1, Integer::sum);
+        }
+        // Union placed-type ids with declared types (eligible in THIS dimension)
+        // so configured-but-unplaced types still appear. "adopted" = placed but
+        // not in the declared registry.
+        var declared = Coedeposits.DEPOSIT_TYPES.all().keySet();
+        java.util.Set<ResourceLocation> all = new java.util.TreeSet<>(byId);
+        all.addAll(counts.keySet());
+        for (ResourceLocation id : declared) {
+            DepositType dt = Coedeposits.DEPOSIT_TYPES.get(id);
+            if (dt != null && dt.matchesDimension(dim)) all.add(id);
+        }
+
+        if (all.isEmpty()) {
+            src.sendSuccess(() -> Component.literal("no deposit types loaded"), false);
+            return 0;
+        }
+
+        int declaredCount = 0, adoptedCount = 0, placedTotal = 0;
+        for (int v : counts.values()) placedTotal += v;
+        for (ResourceLocation id : all) {
+            if (declared.contains(id)) declaredCount++; else adoptedCount++;
+        }
+
+        final int dc = declaredCount, ac = adoptedCount, pt = placedTotal;
+        src.sendSuccess(() -> Component.literal(String.format(
+                "deposit types in %s — %d declared, %d adopted | %d placed",
+                dim, dc, ac, pt)).withStyle(net.minecraft.ChatFormatting.AQUA), false);
+
+        int shown = 0;
+        final int limit = 40;
+        for (ResourceLocation id : all) {
+            if (shown >= limit) {
+                final int more = all.size() - shown;
+                src.sendSuccess(() -> Component.literal("  …and " + more + " more (check the map)")
+                        .withStyle(net.minecraft.ChatFormatting.DARK_GRAY), false);
+                break;
+            }
+            boolean isDeclared = declared.contains(id);
+            DepositType t = Coedeposits.DEPOSIT_TYPES.get(id);
+            String tag = isDeclared
+                    ? (t != null ? t.placement().getSerializedName() : "?")
+                    : "adopted";
+            int n = counts.getOrDefault(id, 0);
+            net.minecraft.ChatFormatting color = isDeclared
+                    ? net.minecraft.ChatFormatting.GRAY
+                    : net.minecraft.ChatFormatting.GOLD;
+            final String flabel = shortTypeLabel(id);
+            final String ftag = tag;
+            final int fn = n;
+            src.sendSuccess(() -> Component.literal(String.format(
+                    "  %s  [%s]  %d placed", flabel, ftag, fn)).withStyle(color), false);
+            shown++;
+        }
+        if (adoptedCount > 0) {
+            src.sendSuccess(() -> Component.literal(
+                    "  adopted = COE veins from other mods/datapacks, shown on the world map")
+                    .withStyle(net.minecraft.ChatFormatting.DARK_GRAY), false);
+        }
+        return all.size();
+    }
+
+    /**
+     * Compact display label for a deposit type in the {@code types} roster:
+     * keeps the namespace (the source mod) but strips COE's verbose
+     * {@code ore_vein_type/} folder and trailing {@code _vein}.
+     */
+    private static String shortTypeLabel(ResourceLocation id) {
+        String path = id.getPath();
+        int slash = path.lastIndexOf('/');
+        if (slash >= 0) path = path.substring(slash + 1);
+        if (path.endsWith("_vein")) path = path.substring(0, path.length() - "_vein".length());
+        return id.getNamespace() + ":" + path;
     }
 
     /**

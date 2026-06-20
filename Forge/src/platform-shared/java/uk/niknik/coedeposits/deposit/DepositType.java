@@ -74,6 +74,43 @@ public record DepositType(
     }
 
     /**
+     * Friendly, human-readable label for a deposit of {@code typeId}: the inline
+     * vein's {@code display_name} if the type sets one, otherwise a prettified
+     * type id. Used for the discovery chat notification's {@code %name%}.
+     *
+     * @param type   the resolved type, or {@code null} if unknown
+     * @param typeId the deposit's type id (used for the prettified fallback)
+     */
+    public static String displayNameOf(DepositType type, ResourceLocation typeId) {
+        if (type != null) {
+            Optional<String> dn = type.vein()
+                    .flatMap(VeinSpec::displayName)
+                    .filter(s -> !s.isBlank());
+            if (dn.isPresent()) return dn.get();
+        }
+        return prettyTypeName(typeId);
+    }
+
+    /**
+     * Title-cased label from a type id, dropping COE's {@code ore_vein_type/}
+     * folder and trailing {@code _vein}: {@code createoreexcavation:ore_vein_type/redstone}
+     * → "Redstone"; {@code coedeposits:nether_gold} → "Nether Gold".
+     */
+    public static String prettyTypeName(ResourceLocation typeId) {
+        String path = typeId.getPath();
+        int slash = path.lastIndexOf('/');
+        if (slash >= 0) path = path.substring(slash + 1);
+        if (path.endsWith("_vein")) path = path.substring(0, path.length() - "_vein".length());
+        StringBuilder sb = new StringBuilder();
+        for (String part : path.split("_")) {
+            if (part.isEmpty()) continue;
+            if (sb.length() > 0) sb.append(' ');
+            sb.append(Character.toUpperCase(part.charAt(0))).append(part.substring(1));
+        }
+        return sb.length() > 0 ? sb.toString() : typeId.getPath();
+    }
+
+    /**
      * True when this type may spawn in {@code dim}. An empty
      * {@link #dimensions} list means "any dimension" (subject to the global
      * {@link Config#ENABLED_DIMENSIONS} allow-list, checked at the picker entry).
@@ -200,7 +237,8 @@ public record DepositType(
             List<DrillOutputSpec> outputs,
             int ticks,
             int stress,
-            Optional<ResourceLocation> drillTag) {
+            Optional<ResourceLocation> drillTag,
+            Optional<FluidInputSpec> fluidInput) {
 
         private static final ResourceLocation DEFAULT_DRILL_TAG =
                 new ResourceLocation("createoreexcavation", "drills");
@@ -213,8 +251,42 @@ public record DepositType(
                 Codec.list(DrillOutputSpec.CODEC).fieldOf("outputs").forGetter(DrillingSpec::outputs),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("ticks", 100).forGetter(DrillingSpec::ticks),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("stress", 256).forGetter(DrillingSpec::stress),
-                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(DrillingSpec::drillTag)
+                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(DrillingSpec::drillTag),
+                FluidInputSpec.CODEC.optionalFieldOf("fluid_input").forGetter(DrillingSpec::fluidInput)
         ).apply(b, DrillingSpec::new));
+    }
+
+    /**
+     * Optional <b>input</b> fluid a drilling / extracting recipe consumes per
+     * cycle — the COE {@code drillingFluid} (recipe JSON key {@code "fluid"}).
+     * Distinct from {@link ExtractingSpec}'s fluid <i>output</i>. This is how the
+     * host mod and add-ons gate a recipe behind a pumped-in fluid (e.g. the
+     * CoE × Mekanism datapack's Brine / Sulfuric-Acid drilling bonuses, or a
+     * coolant requirement).
+     *
+     * <p>Specify exactly one of {@code fluid} (a fluid id) or {@code tag} (a
+     * fluid tag). {@code amount} is millibuckets consumed per cycle (default
+     * 1000 = one bucket).
+     *
+     * <p><b>1.20.1 delta:</b> COE 1.20.1 reads {@code "fluid"} as a
+     * {@code FluidIngredient} (Forge) / Porting-Lib ingredient (Fabric), not the
+     * 1.21 NeoForge {@code SizedFluidIngredient}. The schema here is loader-neutral;
+     * {@link uk.niknik.coedeposits.pack.BundledRecipePack} emits the right JSON shape.
+     *
+     * @param fluid   single fluid id, e.g. {@code minecraft:water}
+     * @param tag     fluid tag id (without the leading {@code #}), e.g. {@code c:lava}
+     * @param amount  mB consumed per cycle (default 1000)
+     */
+    public record FluidInputSpec(
+            Optional<ResourceLocation> fluid,
+            Optional<ResourceLocation> tag,
+            int amount) {
+
+        public static final Codec<FluidInputSpec> CODEC = RecordCodecBuilder.create(b -> b.group(
+                ResourceLocation.CODEC.optionalFieldOf("fluid").forGetter(FluidInputSpec::fluid),
+                ResourceLocation.CODEC.optionalFieldOf("tag").forGetter(FluidInputSpec::tag),
+                ExtraCodecs.POSITIVE_INT.optionalFieldOf("amount", 1000).forGetter(FluidInputSpec::amount)
+        ).apply(b, FluidInputSpec::new));
     }
 
     /**
@@ -249,14 +321,16 @@ public record DepositType(
             int amount,
             int ticks,
             int stress,
-            Optional<ResourceLocation> drillTag) {
+            Optional<ResourceLocation> drillTag,
+            Optional<FluidInputSpec> fluidInput) {
 
         public static final Codec<ExtractingSpec> CODEC = RecordCodecBuilder.create(b -> b.group(
                 ResourceLocation.CODEC.fieldOf("fluid").forGetter(ExtractingSpec::fluid),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("amount", 500).forGetter(ExtractingSpec::amount),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("ticks", 20).forGetter(ExtractingSpec::ticks),
                 ExtraCodecs.POSITIVE_INT.optionalFieldOf("stress", 256).forGetter(ExtractingSpec::stress),
-                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(ExtractingSpec::drillTag)
+                ResourceLocation.CODEC.optionalFieldOf("drill_tag").forGetter(ExtractingSpec::drillTag),
+                FluidInputSpec.CODEC.optionalFieldOf("fluid_input").forGetter(ExtractingSpec::fluidInput)
         ).apply(b, ExtractingSpec::new));
     }
 

@@ -71,6 +71,14 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
         Deposit existing = store.lookup(cp);
         if (existing != null) {
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(existing.typeId());
+            // Re-register a lost implicit type for a previously-adopted foreign
+            // COE vein. Implicit types are in-memory (cleared on reload, gone on
+            // restart); without this a saved adopted deposit would skip its
+            // OreData re-apply after a restart, leaving the vein empty.
+            if (type == null && existing.placement() == DepositType.Placement.COE
+                    && resolveRecipeValue(lvl, existing.typeId()) != null) {
+                type = Coedeposits.DEPOSIT_TYPES.adoptImplicit(existing.typeId());
+            }
             if (type != null && !type.veinRecipes().isEmpty()) {
                 ResourceLocation recipeId;
                 if (existing.placement() == DepositType.Placement.COE) {
@@ -150,8 +158,12 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             return null;
         }
 
-        // ── Phase 3: COE delegation ─────────────────────────────────────────
-        if (!hasAnyCoePlacementType()) {
+        // ── Phase 3: COE delegation + adoption ──────────────────────────────
+        // Run COE's own placement when EITHER a declared placement=COE type
+        // exists OR auto-adopt is on (so foreign add-on/datapack veins can be
+        // taken onto our map). Skipped entirely otherwise — pure-managed worlds
+        // keep behaviour identical to pre-delegation versions.
+        if (!hasAnyCoePlacementType() && !Config.AUTO_ADOPT_COE_VEINS.get()) {
             return null;
         }
 
@@ -164,8 +176,34 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
             return null;
         }
 
-        ResourceLocation coeTypeId = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(chosenVein);
-        DepositType coeType = coeTypeId != null ? Coedeposits.DEPOSIT_TYPES.get(coeTypeId) : null;
+        // Step 3b.5: disabled vein — explicitly via editor/disabled_veins, or a
+        // base-COE vein under coe_veins_disabled_by_default. A DECLARED type
+        // referencing the vein overrides this (promoting a vein in the editor is
+        // explicit intent to have it generate). Return null so COE doesn't place
+        // it at all.
+        ResourceLocation declaredCoeTypeId = Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(chosenVein);
+        if (declaredCoeTypeId == null && Config.isVeinDisabled(chosenVein)) {
+            return null;
+        }
+
+        // Step 3c: adoption path. Resolve the type that owns COE's chosen vein —
+        // a declared placement=COE type, or (when auto-adopt is on) an implicit
+        // type keyed by the vein id. Either way we take ownership of the OreData
+        // and persist a single-chunk deposit so it shows on the map. Honour the
+        // per-type dimensions allow-list — a COE entry restricted to specific
+        // dims won't be tracked outside them (implicit types are dim-agnostic).
+        ResourceLocation coeTypeId = declaredCoeTypeId;
+        DepositType coeType;
+        if (coeTypeId != null) {
+            coeType = Coedeposits.DEPOSIT_TYPES.get(coeTypeId);
+        } else if (Config.AUTO_ADOPT_COE_VEINS.get()) {
+            // Foreign vein (add-on / datapack) with no declared deposit_type —
+            // adopt it under an implicit COE type whose id IS the vein id.
+            coeTypeId = chosenVein;
+            coeType = Coedeposits.DEPOSIT_TYPES.adoptImplicit(chosenVein);
+        } else {
+            coeType = null;
+        }
         if (coeType != null && coeType.matchesDimension(dim)) {
             float amountMul = rollDeterministicMul(store.effectiveSeed(lvl), cp);
             applyToOreData(chunk, chosenVein, amountMul);
@@ -243,8 +281,33 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
         }
     }
 
+    /** Cached handle to {@code OreDataCapability.OreData.extractedAmount} (no public getter). */
+    private static java.lang.reflect.Field extractedAmountField;
+
+    /**
+     * Reflectively read {@code OreData.extractedAmount} (COE exposes no getter on
+     * the 1.20.1 nested {@link OreDataCapability.OreData}). Used by the depletion
+     * sweep's self-heal to tell a never-applied deposit chunk (extracted == 0)
+     * from a genuinely mined-out one (extracted &gt; 0). On reflection failure
+     * returns {@link Long#MAX_VALUE} so the caller treats the chunk as
+     * "extracted" and does NOT refill it (fail safe, never re-fills).
+     */
+    public static long getExtractedAmount(OreDataCapability.OreData od) {
+        try {
+            java.lang.reflect.Field f = extractedAmountField;
+            if (f == null) {
+                f = OreDataCapability.OreData.class.getDeclaredField("extractedAmount");
+                f.setAccessible(true);
+                extractedAmountField = f;
+            }
+            return f.getLong(od);
+        } catch (ReflectiveOperationException e) {
+            return Long.MAX_VALUE;
+        }
+    }
+
     /** Recipe lookup — 1.20.1 RecipeManager.byKey returns the Recipe directly (no holder). */
-    static VeinRecipe resolveRecipeValue(ServerLevel lvl, ResourceLocation id) {
+    public static VeinRecipe resolveRecipeValue(ServerLevel lvl, ResourceLocation id) {
         return lvl.getRecipeManager().byKey(id)
                 .filter(r -> r instanceof VeinRecipe)
                 .map(r -> (VeinRecipe) r)
@@ -283,7 +346,7 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
     }
 
     /** Deterministic {@code [0,1)} float for (seed, chunk) — reproducible randomMul for COE veins. */
-    private static float rollDeterministicMul(long worldSeed, ChunkPos cp) {
+    static float rollDeterministicMul(long worldSeed, ChunkPos cp) {
         WorldgenRandom rng = new WorldgenRandom(new LegacyRandomSource(0L));
         rng.setLargeFeatureSeed(worldSeed, cp.x, cp.z);
         return rng.nextFloat();
@@ -361,6 +424,27 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                 }
             }
         }
+        // ── Phase 3: COE-generation veins via COE's own locate ──────────────
+        // Declared placement=COE types + auto-adopted foreign veins are placed by
+        // COE's spread. Reuse COE's exact locate (it owns the spread math) to find
+        // the nearest one the finder query wants, filtered to recipes we adopt
+        // (never a managed recipe — those come from Phases 1-2). Already-placed COE
+        // deposits were caught by Phase 1; this extends finder reach to ones not
+        // yet generated / prospected.
+        boolean autoAdopt = Config.AUTO_ADOPT_COE_VEINS.get();
+        if (autoAdopt || Coedeposits.DEPOSIT_TYPES.hasCoePlacementType()) {
+            Pair<BlockPos, VeinRecipe> coe = super.locate(pPos, level, searchRadius, rh -> {
+                if (!filter.test(rh)) return false;
+                ResourceLocation rid = rh.getId();
+                if (Coedeposits.DEPOSIT_TYPES.managedVeinRecipes().contains(rid)) return false;
+                return autoAdopt || Coedeposits.DEPOSIT_TYPES.coeTypeIdForVeinRecipe(rid) != null;
+            });
+            if (coe != null) {
+                float d = RandomSpreadGenerator.distance2d(coe.getFirst(), pPos);
+                if (d < bestDist) { bestDist = d; best = coe.getFirst(); bestRecipe = coe.getSecond(); }
+            }
+        }
+
         return best != null ? Pair.of(best, bestRecipe) : null;
     }
 
@@ -394,7 +478,9 @@ public class CoedepositsPicker extends RandomSpreadGenerator {
                 dep.core().getMiddleBlockZ());
         CoedepositsNetwork.broadcastDiscovery(
                 lvl.getServer(),
-                new DepositDiscoveryPayload(dep.name(), pos, dep.typeId()));
+                new DepositDiscoveryPayload(
+                        DepositType.displayNameOf(Coedeposits.DEPOSIT_TYPES.get(dep.typeId()), dep.typeId()),
+                        pos, dep.typeId(), ""));
     }
 
     /** Replace COE's static {@code OreVeinGenerator.picker} with a fresh instance via reflection. */

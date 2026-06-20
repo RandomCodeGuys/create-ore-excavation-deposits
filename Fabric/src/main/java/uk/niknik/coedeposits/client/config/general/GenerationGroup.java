@@ -100,6 +100,20 @@ public final class GenerationGroup {
                 .build();
         group.option(chunksPerTick);
 
+        group.option(Bindings.toggle("Auto-adopt COE veins",
+                "Adopt COE vein recipes that have no coedeposits deposit_type of their own (from add-ons "
+                + "or datapacks) onto the world map — we own their OreData and track them like a declared "
+                + "deposit. Off = those veins stay pure vanilla COE (generate but invisible to our "
+                + "map/finder).",
+                Config.AUTO_ADOPT_COE_VEINS));
+
+        group.option(Bindings.toggle("Disable base COE veins",
+                "Disable the base Create Ore Excavation mod's own veins by default — this mod's managed "
+                + "deposits replace them, so both generating would duplicate every ore. Add-on/datapack "
+                + "veins are unaffected and still auto-adopt. Re-enable single veins from the Deposits "
+                + "tab (Enable / Edit →).",
+                Config.COE_VEINS_DISABLED_BY_DEFAULT));
+
         group.option(dimensionsButton());
 
         return group.build();

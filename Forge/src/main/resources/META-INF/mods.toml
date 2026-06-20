@@ -45,3 +45,13 @@ ${mod_description}
     versionRange="[6.0.2,)"
     ordering="AFTER"
     side="BOTH"
+
+# KubeJS — OPTIONAL script integration (the CoeDeposits binding for defining deposit
+# types from scripts). Load AFTER it so kubejs.plugins.txt is picked up when present;
+# absent = the plugin is never discovered and the mod runs fine without it.
+[[dependencies.${mod_id}]]
+    modId="kubejs"
+    mandatory=false
+    versionRange="[2001.6,)"
+    ordering="AFTER"
+    side="BOTH"

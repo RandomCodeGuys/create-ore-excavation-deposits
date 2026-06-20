@@ -61,6 +61,26 @@ public class Config {
         }
     }
 
+    /**
+     * Scope of a per-player reveal trigger (ON_DISCOVERY walk-into / ON_PROSPECT
+     * vein-finder): {@link #PER_PLAYER} keeps each player's discoveries private
+     * (COE's own behaviour), {@link #TEAM} shares them with the discoverer's
+     * party/team (Open Parties and Claims → FTB Teams → vanilla scoreboard team),
+     * {@link #GLOBAL} shares the first player's discovery with everyone. No
+     * effect on ALWAYS (already global) or ON_PROXIMITY (a client-side distance
+     * filter).
+     */
+    public enum RevealScope implements StringRepresentable {
+        PER_PLAYER, TEAM, GLOBAL;
+
+        public static final Codec<RevealScope> CODEC = StringRepresentable.fromEnum(RevealScope::values);
+
+        @Override
+        public String getSerializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
     private static final ForgeConfigSpec.Builder BUILDER = new ForgeConfigSpec.Builder();
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -176,6 +196,51 @@ public class Config {
             .defineEnum("reveal_mode", RevealMode.ALWAYS);
 
     /**
+     * Scope of per-player reveal triggers (ON_DISCOVERY / ON_PROSPECT):
+     * PER_PLAYER (default, COE-like — each player discovers for themselves),
+     * TEAM (shared with the discoverer's party/team) or GLOBAL (the first
+     * player's discovery reveals the deposit for everyone). No effect on ALWAYS
+     * or ON_PROXIMITY.
+     */
+    public static final ForgeConfigSpec.EnumValue<RevealScope> REVEAL_SCOPE = BUILDER
+            .comment("Scope of a per-player reveal (ON_DISCOVERY / ON_PROSPECT):",
+                    "  PER_PLAYER — each player must discover/prospect a deposit themselves (COE-like).",
+                    "  TEAM       — a discovery is shared with the discoverer's party/team",
+                    "               (Open Parties and Claims, else FTB Teams, else the vanilla scoreboard team).",
+                    "  GLOBAL     — the first player to discover/prospect it reveals it for everyone.",
+                    "No effect on ALWAYS (already global) or ON_PROXIMITY (client-side distance filter).")
+            .defineEnum("reveal_scope", RevealScope.PER_PLAYER);
+
+    /**
+     * Whether to show the chat line when a deposit is discovered (ALWAYS
+     * placement, or a per-player reveal). Off = the deposit still appears on the
+     * map / Xaero waypoint, just without the chat notification. Read client-side
+     * in {@link uk.niknik.coedeposits.compat.xaero.XaeroBridge}.
+     */
+    public static final ForgeConfigSpec.BooleanValue DISCOVERY_CHAT = BUILDER
+            .comment("Show a chat message when a deposit is discovered.",
+                    "Off = no chat line (the map marker / waypoint still appears). Default on.")
+            .define("discovery_chat", true);
+
+    /**
+     * Format string for the discovery chat line. Placeholders: {@code %name%}
+     * (friendly deposit name — the type's display_name or a prettified id),
+     * {@code %pos%} (clickable coordinate that suggests {@code /tp}),
+     * {@code %x% %y% %z%} (raw numbers), {@code %type%} (raw type id),
+     * {@code %player%} (discoverer, GLOBAL scope only), {@code %%} (literal
+     * percent). Minecraft {@code §} colour codes work in the literal text.
+     */
+    public static final ForgeConfigSpec.ConfigValue<String> DISCOVERY_MESSAGE_FORMAT = BUILDER
+            .comment("Discovery chat message template. Placeholders:",
+                    "  %name% — friendly name (display_name or prettified id)",
+                    "  %pos%  — clickable coordinate (suggests /tp)",
+                    "  %x% %y% %z% — raw coordinate numbers",
+                    "  %type% — raw type id (e.g. createoreexcavation:ore_vein_type/iron)",
+                    "  %player% — discoverer's name (only for GLOBAL reveal_scope; empty otherwise)",
+                    "  %% — a literal percent sign. § colour codes are supported.")
+            .define("discovery_message_format", "Discovered %name% at %pos%");
+
+    /**
      * Block-radius for {@link RevealMode#ON_PROXIMITY}. Client-side filter
      * inside {@link uk.niknik.coedeposits.client.WorldMapDepositRenderer}.
      */
@@ -217,6 +282,90 @@ public class Config {
                     "Dimensions not in this list are left to vanilla COE (no managed generation, no map tracking).")
             .defineList("enabled_dimensions",
                     List.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end"),
+                    o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Compat — how we treat COE vein recipes that have no coedeposits
+    // deposit_type of their own (e.g. those added by Create Ore Excavation
+    // Plus, the CoE×Mekanism datapack, OreCompatCreate, or any third-party
+    // datapack). With one unified ownership model the only question is whether
+    // such "foreign" veins are adopted onto our map or left as plain COE.
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /**
+     * When COE's own spread generator would place a vein recipe that no
+     * coedeposits {@code deposit_type} declares, adopt it: synthesise an
+     * implicit COE-placement type, take ownership of its OreData, persist a
+     * single-chunk {@link uk.niknik.coedeposits.deposit.Deposit}, and render it
+     * on the world map exactly like a declared COE-placement deposit. This is
+     * what makes add-ons that ship their own COE veins (Create Ore Excavation
+     * Plus, CoE×Mekanism, OreCompatCreate, …) show up on the overlay without
+     * the admin authoring a deposit_type for each.
+     *
+     * <p>Turn OFF to keep foreign veins as pure vanilla COE — they still
+     * generate, but stay invisible to our map/finder/lifecycle. Recipes that a
+     * MANAGED type already owns are never adopted here (they spawn only through
+     * the blob algorithm); this only affects veins COE itself would place.
+     */
+    public static final ForgeConfigSpec.BooleanValue AUTO_ADOPT_COE_VEINS = BUILDER
+            .comment("Adopt COE vein recipes that have no coedeposits deposit_type (e.g. from",
+                    "Create Ore Excavation Plus, the CoE x Mekanism datapack, OreCompatCreate, or",
+                    "any datapack) onto the world map: we synthesise an implicit COE-placement type,",
+                    "own its OreData and track it like a declared deposit. OFF = foreign veins stay",
+                    "pure vanilla COE (generate but invisible to our map/finder). Default ON.")
+            .define("auto_adopt_coe_veins", true);
+
+    /**
+     * COE vein recipe ids to suppress entirely — they won't generate and won't
+     * be adopted. The picker returns {@code null} when COE's spread would place
+     * one, so the vein simply doesn't appear. Managed coedeposits ores are turned
+     * off by disabling their {@code deposit_type} instead; this list is for the
+     * foreign / adopted COE veins surfaced in the in-game editor's "adopted"
+     * section (Disable button). Edited there or by hand.
+     *
+     * <p><b>1.20.1 delta:</b> Forge's empty-allowed list takes
+     * {@code (List<String> path, Supplier<List> default, elementValidator)} —
+     * the {@code String}-path + {@code newElementSupplier} overload NeoForge
+     * uses does not exist here.
+     */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> DISABLED_VEINS = BUILDER
+            .comment("COE vein recipe ids to suppress — they won't generate or be adopted.",
+                    "Managed coedeposits ores are turned off by disabling their deposit_type instead.",
+                    "Format: list of vein recipe ids, e.g. \"createoreexcavation:ore_vein_type/water\".",
+                    "Usually managed via the in-game editor (Deposits tab -> adopted -> Disable).")
+            .<String>defineListAllowEmpty(List.of("disabled_veins"),
+                    () -> List.of(),
+                    o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
+
+    /**
+     * When true (default), the BASE Create Ore Excavation mod's bundled veins
+     * ({@code createoreexcavation:*}) start <b>disabled</b> — coedeposits ships
+     * managed deposit types that replace their role, so letting them also
+     * generate would duplicate every ore. Veins from add-ons / datapacks (any
+     * other namespace) are unaffected: they were added intentionally, not as a
+     * dependency side-effect, and keep adopting as usual. A disabled base vein
+     * can be re-enabled per-id ({@link #ENABLED_VEINS} / the editor's Enable
+     * button) or revived wholesale by turning this off.
+     */
+    public static final ForgeConfigSpec.BooleanValue COE_VEINS_DISABLED_BY_DEFAULT = BUILDER
+            .comment("Disable the BASE Create Ore Excavation mod's bundled veins (createoreexcavation:*)",
+                    "by default — coedeposits' managed deposits replace them, so both generating would",
+                    "duplicate every ore. Veins from add-ons/datapacks (other namespaces) are unaffected",
+                    "and still auto-adopt. Re-enable single base veins via enabled_veins / the in-game",
+                    "editor's Enable button, or set this to false to bring them all back. Default true.")
+            .define("coe_veins_disabled_by_default", true);
+
+    /**
+     * Per-vein exceptions to {@link #COE_VEINS_DISABLED_BY_DEFAULT}: base-COE
+     * vein ids listed here are active again (generate + adopt). Managed by the
+     * in-game editor's Enable button on a default-disabled vein.
+     */
+    public static final ForgeConfigSpec.ConfigValue<List<? extends String>> ENABLED_VEINS = BUILDER
+            .comment("Base-COE vein recipe ids re-enabled despite coe_veins_disabled_by_default.",
+                    "Format: list of vein recipe ids, e.g. \"createoreexcavation:ore_vein_type/water\".",
+                    "Usually managed via the in-game editor (Deposits tab -> disabled vein -> Enable).")
+            .<String>defineListAllowEmpty(List.of("enabled_veins"),
+                    () -> List.of(),
                     o -> o instanceof String s && ResourceLocation.tryParse(s) != null);
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -295,5 +444,32 @@ public class Config {
     /** Convenience: is this dimension key in the configured allowlist? */
     public static boolean isDimensionEnabled(ResourceLocation dim) {
         return enabledDimensions().contains(dim);
+    }
+
+    /** Namespace of the base Create Ore Excavation mod's bundled vein recipes. */
+    public static final String COE_NAMESPACE = "createoreexcavation";
+
+    /** True when {@code veinId} belongs to the BASE COE mod (not an add-on/datapack). */
+    public static boolean isCoeBundledVein(ResourceLocation veinId) {
+        return COE_NAMESPACE.equals(veinId.getNamespace());
+    }
+
+    /**
+     * Effective disabled state of a COE vein recipe: explicitly listed in
+     * {@link #DISABLED_VEINS}, or a base-COE vein under
+     * {@link #COE_VEINS_DISABLED_BY_DEFAULT} that hasn't been re-enabled via
+     * {@link #ENABLED_VEINS}. Callers that honour declared deposit_types must
+     * additionally let a declared reference override this (promoting a vein in
+     * the editor is explicit intent) — see the picker / prospect gates.
+     */
+    public static boolean isVeinDisabled(ResourceLocation veinId) {
+        String id = veinId.toString();
+        List<? extends String> off = DISABLED_VEINS.get();
+        if (!off.isEmpty() && off.contains(id)) return true;
+        if (COE_VEINS_DISABLED_BY_DEFAULT.get() && isCoeBundledVein(veinId)) {
+            List<? extends String> on = ENABLED_VEINS.get();
+            return on.isEmpty() || !on.contains(id);
+        }
+        return false;
     }
 }

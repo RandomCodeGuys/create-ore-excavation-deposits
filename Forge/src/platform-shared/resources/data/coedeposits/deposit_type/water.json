@@ -1,5 +1,5 @@
 {
-  "vein_recipe": "coedeposits:example_water_vein",
+  "vein_recipe": "coedeposits:water_vein",
   "dimensions": "minecraft:overworld",
   "distance": {
     "min": 0,

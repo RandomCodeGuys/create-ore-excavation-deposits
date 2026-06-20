@@ -73,6 +73,7 @@ public final class CoedepositsServerEvents {
 
     // ── tick cadences (copied from the Forge listeners) ──────────────────────
     private static final int CHECK_INTERVAL_TICKS = 200;
+    private static final int DISCOVERY_SWEEP_TICKS = 20;
     private static final int DEPLETION_INTERVAL_TICKS = 20;
     private static final int REPLENISH_INTERVAL_TICKS = 20;
     private static final int SYNC_INTERVAL_TICKS = 100;
@@ -188,8 +189,10 @@ public final class CoedepositsServerEvents {
             ProspectScanQueue.INSTANCE.tickMaterialize(lvl, budget);
         }
 
-        // ── Every 200 ticks: roam-enqueue + ON_DISCOVERY reveal sweep ───────
-        if (tick % CHECK_INTERVAL_TICKS == 0) {
+        // ── Roam-enqueue (slow 200t, expensive) + reveal sweep (fast 20t) ───
+        boolean doScan = tick % CHECK_INTERVAL_TICKS == 0;
+        boolean doDiscovery = tick % DISCOVERY_SWEEP_TICKS == 0;
+        if (doScan || doDiscovery) {
             int prospectRadius = Config.PROSPECT_RADIUS.get();
             int discoveryRadius = Config.DISCOVERY_RADIUS_BLOCKS.get();
             long discoveryRadiusSq = (long) discoveryRadius * discoveryRadius;
@@ -200,28 +203,42 @@ public final class CoedepositsServerEvents {
                 if (!Config.isDimensionEnabled(lvl.dimension().location())) continue;
                 BlockPos current = p.blockPosition();
 
-                if (prospectRadius > 0) {
+                if (doScan && prospectRadius > 0) {
                     BlockPos last = lastScanCenter.get(p.getUUID());
                     if (last == null || distSq(last, current) > prospectTriggerSq) {
                         ProspectScanQueue.INSTANCE.enqueue(lvl, current, prospectRadius);
                         lastScanCenter.put(p.getUUID(), current);
                     }
                 }
-                tryRevealDiscoveryNear(lvl, p, current, discoveryRadiusSq);
+                if (doDiscovery) tryRevealDiscoveryNear(lvl, p, current, discoveryRadiusSq);
             }
         }
 
-        // ── Depletion sweep ─────────────────────────────────────────────────
+        // ── Depletion sweep (+ self-heal unapplied chunks) ──────────────────
         if (tick % DEPLETION_INTERVAL_TICKS == 0) {
+            float edgeMul = Config.EDGE_AMOUNT_MUL.get().floatValue();
             for (ServerLevel lvl : enabledLevels(server)) {
                 DepositSavedData store = DepositSavedData.get(lvl);
                 if (store.all().isEmpty()) continue;
                 ServerChunkCache cache = lvl.getChunkSource();
+                long depositSeed = store.effectiveSeed(lvl);
                 for (Deposit dep : store.all().values()) {
+                    DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
                     for (ChunkPos cp : dep.chunks()) {
                         LevelChunk chunk = cache.getChunkNow(cp.x, cp.z);
                         if (chunk == null) continue;
-                        clearIfDepleted(lvl, chunk);
+                        OreDataCapability.OreData od = OreDataCapability.getData(chunk);
+                        if (od.getRecipeId() == null) {
+                            // Self-heal: a deposit chunk with no recipe AND nothing
+                            // extracted was never applied (placed over already-
+                            // populated terrain). Re-apply; mined-out chunks stay.
+                            if (type != null && !type.veinRecipes().isEmpty()
+                                    && CoedepositsPicker.getExtractedAmount(od) == 0L) {
+                                reapplyOreData(lvl, chunk, dep, type, depositSeed, edgeMul);
+                            }
+                        } else {
+                            clearIfDepleted(lvl, chunk);
+                        }
                     }
                 }
             }
@@ -259,16 +276,28 @@ public final class CoedepositsServerEvents {
         DepositSavedData store = DepositSavedData.get(lvl);
         if (store.all().isEmpty()) return;
         UUID pid = player.getUUID();
+        int proximityRadius = Config.PROXIMITY_REVEAL_BLOCKS.get();
+        long proximityRadiusSq = (long) proximityRadius * proximityRadius;
         for (Deposit dep : store.all().values()) {
             if (store.isRevealed(pid, dep.id())) continue;
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
             Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
-            if (mode != Config.RevealMode.ON_DISCOVERY) continue;
-            if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
-            if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
-                if (Config.LOG_DISCOVERY.get()) {
-                    Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
-                            player.getName().getString(), dep.name());
+            if (mode == Config.RevealMode.ON_DISCOVERY) {
+                if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
+                if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
+                    if (Config.LOG_DISCOVERY.get()) {
+                        Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
+                                player.getName().getString(), dep.name());
+                    }
+                }
+            } else if (mode == Config.RevealMode.ON_PROXIMITY) {
+                if (!withinAnyChunk(current, dep, proximityRadiusSq)) continue;
+                if (store.reveal(pid, dep.id())) {
+                    CoedepositsNetwork.sendProximityNotice(lvl, player, dep);
+                    if (Config.LOG_DISCOVERY.get()) {
+                        Coedeposits.LOGGER.info("[coedeposits] {} came near {} (proximity notice)",
+                                player.getName().getString(), dep.name());
+                    }
                 }
             }
         }
@@ -354,6 +383,33 @@ public final class CoedepositsServerEvents {
                     "[coedeposits] replenished {} chunk {},{}: +{} units ({} → {} of {})",
                     dep.name(), chunk.getPos().x, chunk.getPos().z,
                     delta, remaining, newRemaining, total);
+        }
+    }
+
+    /**
+     * Re-apply a deposit chunk's OreData (self-heal for chunks placed over
+     * already-populated terrain that never got applied). Per-chunk recipe roll
+     * for MANAGED, first recipe for COE; filler rolls and unloaded recipes are
+     * skipped. {@link CoedepositsPicker#applyToOreData} resets extractedAmount.
+     */
+    private static void reapplyOreData(ServerLevel lvl, LevelChunk chunk, Deposit dep,
+                                       DepositType type, long depositSeed, float edgeMul) {
+        ResourceLocation recipeId;
+        if (dep.placement() == DepositType.Placement.COE) {
+            recipeId = type.veinRecipes().get(0).recipe();
+        } else {
+            java.util.Optional<ResourceLocation> rolled =
+                    DepositPlacer.rollChunkRecipe(type, depositSeed, chunk.getPos());
+            if (rolled.isEmpty()) return;  // filler — legitimately no ore
+            recipeId = rolled.get();
+        }
+        if (CoedepositsPicker.resolveRecipeValue(lvl, recipeId) == null) return;  // recipe not loaded
+        float perChunk = dep.amountMulFor(chunk.getPos(), edgeMul);
+        CoedepositsPicker.applyToOreData(chunk, recipeId, perChunk);
+        chunk.setUnsaved(true);
+        if (Config.LOG_DEPLETION.get()) {
+            Coedeposits.LOGGER.info("[coedeposits] healed unapplied chunk {},{} of {} ({})",
+                    chunk.getPos().x, chunk.getPos().z, dep.name(), recipeId);
         }
     }
 

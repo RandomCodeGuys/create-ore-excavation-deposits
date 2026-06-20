@@ -53,6 +53,18 @@ minecraft {
             property 'mixin.env.refMapRemappingFile', "${projectDir}/build/createSrgToMcp/output.srg"
             mods { "${mod_id}" { source sourceSets.main } }
         }
+        // Second dev client for two-player testing (reveal_scope / sharing / team reveal).
+        // FG6 only injects the launch main-class into runs that inherit a configured run, so
+        // this MUST `parent` the client run — a from-scratch run dies with "No main class
+        // specified". Inherits client's mixin-refmap props; overrides only the working dir (its
+        // own run2/) + a distinct offline username, so the default "Dev" client can Open-to-LAN
+        // and "Dev2" joins via Direct Connect → localhost:<port>. Generates the `runClient2` task.
+        client2 {
+            parent project.minecraft.runs.getByName('client')
+            workingDirectory project.file('run2')
+            args '--username', 'Dev2'
+            mods { "${mod_id}" { source sourceSets.main } }
+        }
         server {
             workingDirectory project.file('run')
             property 'forge.logging.console.level', 'debug'
@@ -130,6 +142,17 @@ repositories {
     mavenCentral {
         content { includeGroupByRegex "io\\.github\\.llamalad7.*" }
     }
+    // KubeJS + Rhino (OPTIONAL script integration) — Latvian's maven, content-filtered
+    // so it's never queried for the deobf Modrinth/Create deps.
+    maven {
+        url = "https://maven.latvian.dev/releases"
+        content { includeGroup "dev.latvian.mods" }
+    }
+    // Architectury API — KubeJS's multiloader base (its API types appear in KubeJSPlugin signatures).
+    maven {
+        url = "https://maven.architectury.dev/"
+        content { includeGroup "dev.architectury" }
+    }
 }
 
 dependencies {
@@ -167,6 +190,34 @@ dependencies {
     // Mirrors the NeoForge line's Cubes Without Borders. QzVMYIfG = 3.0.0+1.20 (forge), the
     // build Modrinth lists under 1.20.1.
     runtimeOnly(fg.deobf("maven.modrinth:cubes-without-borders:QzVMYIfG")) { transitive = false }
+
+    // ── Dev-runtime ONLY test mods (runClient / runClient2) — exercise the 0.2.0 feature
+    //   surface in-game. Not compile deps, not bundled (runtimeOnly, like cubes above).
+    //   OPAC      BOfbzRMc = forge-1.20.1-0.27.5 → backs reveal_scope: TEAM (parties path).
+    //             TeamBridge resolves OPAC → FTB Teams → vanilla scoreboard; OPAC + a vanilla
+    //             `/team` cover two of the three branches (FTB Teams isn't on Modrinth maven —
+    //             drop its jar into run/mods by hand to exercise the FTB branch).
+    //   COE-Plus  WHvecoEX = 0.2.3 → ships its own COE veins with no coedeposits deposit_type,
+    //             so the auto-adopt path (auto_adopt_coe_veins) has real foreign veins to adopt.
+    runtimeOnly(fg.deobf("maven.modrinth:open-parties-and-claims:BOfbzRMc")) { transitive = false }
+    runtimeOnly(fg.deobf("maven.modrinth:create-ore-excavation-plus:WHvecoEX")) { transitive = false }
+
+    // KubeJS at DEV RUNTIME too (the compileOnly trio below only puts the plugin classes on the
+    // compile classpath) — so the CoeDeposits binding actually loads in runClient and
+    // `CoeDeposits.add(...)` is testable. KubeJS needs Rhino + Architectury at runtime as well.
+    runtimeOnly(fg.deobf("dev.latvian.mods:kubejs-forge:2001.6.5-build.26")) { transitive = false }
+    runtimeOnly(fg.deobf("dev.latvian.mods:rhino-forge:2001.2.2-build.17")) { transitive = false }
+    runtimeOnly(fg.deobf("dev.architectury:architectury-forge:9.1.12")) { transitive = false }
+
+    // ── KubeJS — OPTIONAL script integration (kubejs/* plugin + CoeDeposits binding) ─────
+    // compileOnly: players supply KubeJS at runtime; the plugin is discovered (via
+    // kubejs.plugins.txt) only when KubeJS is installed, so the mod loads fine without it.
+    // KubeJS 2001.6.5 (1.20.1) needs Rhino 2001.2.2 + Architectury 9.1.12 on the COMPILE
+    // classpath (KubeJSPlugin's method signatures + BindingsEvent's Scriptable reference them).
+    // transitive=false — deobf jars have no resolvable POM in ForgeGradle staging; listed explicitly.
+    compileOnly(fg.deobf("dev.latvian.mods:kubejs-forge:2001.6.5-build.26")) { transitive = false }
+    compileOnly(fg.deobf("dev.latvian.mods:rhino-forge:2001.2.2-build.17")) { transitive = false }
+    compileOnly(fg.deobf("dev.architectury:architectury-forge:9.1.12")) { transitive = false }
 }
 
 tasks.named('processResources', ProcessResources).configure {

@@ -43,6 +43,8 @@ public class DepositSavedData extends SavedData {
     private final Map<UUID, Deposit> deposits = new HashMap<>();
     private final Map<Long, UUID> chunkIndex = new HashMap<>();
     private final Map<UUID, Set<UUID>> revealed = new HashMap<>();
+    /** Deposit ids revealed for EVERYONE — a GLOBAL-scope reveal trigger fired for them. */
+    private final Set<UUID> globallyRevealed = new HashSet<>();
     private Optional<Long> depositSeed = Optional.empty();
 
     /** Get-or-create the level's data instance. Always call on the server thread. */
@@ -51,11 +53,14 @@ public class DepositSavedData extends SavedData {
     }
 
     /** Wire wrapper for codec encoding. */
-    private record Storage(List<Deposit> all, List<RevealEntry> revealedEntries, Optional<Long> depositSeed) {
+    private record Storage(List<Deposit> all, List<RevealEntry> revealedEntries,
+                           List<UUID> globallyRevealed, Optional<Long> depositSeed) {
         static final Codec<Storage> CODEC = RecordCodecBuilder.create(b -> b.group(
                 Codec.list(Deposit.CODEC).fieldOf("deposits").forGetter(Storage::all),
                 Codec.list(RevealEntry.CODEC).optionalFieldOf("revealed", List.of())
                         .forGetter(Storage::revealedEntries),
+                Codec.list(UUIDUtil.CODEC).optionalFieldOf("globally_revealed", List.of())
+                        .forGetter(Storage::globallyRevealed),
                 Codec.LONG.optionalFieldOf("deposit_seed").forGetter(Storage::depositSeed)
         ).apply(b, Storage::new));
     }
@@ -79,6 +84,7 @@ public class DepositSavedData extends SavedData {
                     for (RevealEntry e : s.revealedEntries()) {
                         out.revealed.put(e.player(), new HashSet<>(e.deposits()));
                     }
+                    out.globallyRevealed.addAll(s.globallyRevealed());
                     out.depositSeed = s.depositSeed();
                 });
         return out;
@@ -93,7 +99,8 @@ public class DepositSavedData extends SavedData {
             revealedFlat.add(new RevealEntry(e.getKey(), new ArrayList<>(e.getValue())));
         }
 
-        Storage payload = new Storage(new ArrayList<>(deposits.values()), revealedFlat, depositSeed);
+        Storage payload = new Storage(new ArrayList<>(deposits.values()), revealedFlat,
+                new ArrayList<>(globallyRevealed), depositSeed);
         Tag encoded = Storage.CODEC.encodeStart(NbtOps.INSTANCE, payload)
                 .getOrThrow(false, err -> Coedeposits.LOGGER.error(
                         "[coedeposits] failed to encode SavedData: {}", err));
@@ -210,6 +217,7 @@ public class DepositSavedData extends SavedData {
             chunkIndex.computeIfPresent(cp.toLong(),
                     (k, owner) -> owner.equals(depositId) ? null : owner);
         }
+        globallyRevealed.remove(depositId);
         setDirty();
         return removed;
     }
@@ -235,6 +243,7 @@ public class DepositSavedData extends SavedData {
         java.util.List<UUID> ids = new ArrayList<>(deposits.keySet());
         deposits.clear();
         chunkIndex.clear();
+        globallyRevealed.clear();
         setDirty();
         return ids;
     }
@@ -256,6 +265,22 @@ public class DepositSavedData extends SavedData {
     public boolean isRevealed(UUID playerId, UUID depositId) {
         Set<UUID> set = revealed.get(playerId);
         return set != null && set.contains(depositId);
+    }
+
+    /**
+     * Mark this deposit revealed for EVERYONE (a GLOBAL-scope reveal trigger).
+     * Returns true when it wasn't already globally revealed, so the caller can
+     * drive a one-shot broadcast. Marks the SavedData dirty on change.
+     */
+    public boolean revealGlobal(UUID depositId) {
+        boolean added = globallyRevealed.add(depositId);
+        if (added) setDirty();
+        return added;
+    }
+
+    /** Is this deposit revealed for everyone (a GLOBAL-scope reveal fired)? */
+    public boolean isGloballyRevealed(UUID depositId) {
+        return globallyRevealed.contains(depositId);
     }
 
     /** Unmodifiable view of the player's revealed-deposit set. */

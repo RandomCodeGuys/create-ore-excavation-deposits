@@ -10,5 +10,5 @@
   "priority": 0,
   "stress": 256,
   "ticks": 20,
-  "vein_id": "coedeposits:example_water_vein"
+  "vein_id": "coedeposits:water_vein"
 }

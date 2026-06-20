@@ -21,6 +21,7 @@ import uk.niknik.coedeposits.Coedeposits;
 import uk.niknik.coedeposits.Config;
 import uk.niknik.coedeposits.client.DepositAuthoring;
 import uk.niknik.coedeposits.client.DepositAuthoring.Draft;
+import uk.niknik.coedeposits.deposit.DepositType;
 
 /**
  * Shared state + the write-through binding for the deposit editor — the deposit-side
@@ -40,6 +41,8 @@ public final class DepositBindings {
 
     // Autocomplete candidate pools, refreshed by reload() from client state.
     public static List<String> recipeIds = List.of();
+    /** All COE vein-recipe ids known to the client; {@link #adoptableVeinIds} filters to unreferenced ones. */
+    public static List<String> coeVeinIds = List.of();
     public static List<String> itemTagIds = List.of();
     public static List<String> biomeTagIds = List.of();
     public static List<String> dimensionIds = List.of();
@@ -165,6 +168,11 @@ public final class DepositBindings {
             // 1.20.1: RecipeManager.getRecipes() yields Recipe<?> (getId()), not 1.21's RecipeHolder (id()).
             recipeIds = safe(() -> c.getRecipeManager().getRecipes().stream()
                     .map(h -> h.getId().toString()).sorted().toList());
+            // COE vein recipes only — the pool of potentially-adoptable foreign veins
+            // (bare Recipe on 1.20.1; getId(), not 1.21's RecipeHolder.id()).
+            coeVeinIds = safe(() -> c.getRecipeManager().getRecipes().stream()
+                    .filter(r -> r instanceof com.tom.createores.recipe.VeinRecipe)
+                    .map(r -> r.getId().toString()).sorted().toList());
             biomeTagIds = safe(() -> c.registryAccess().registryOrThrow(Registries.BIOME).getTagNames()
                     .map(t -> t.location().toString()).sorted().toList());
             dimensionIds = safe(() -> c.levels().stream()
@@ -174,9 +182,69 @@ public final class DepositBindings {
             // be guessed, but offer the common vanilla biome tags + the three default dimensions so
             // the biome/dimension filters stay usable instead of greying out.
             recipeIds = List.of();
+            coeVeinIds = List.of();
             biomeTagIds = FALLBACK_BIOME_TAGS;
             dimensionIds = List.of("minecraft:overworld", "minecraft:the_nether", "minecraft:the_end");
         }
+    }
+
+    /**
+     * COE vein recipes that no current draft references — i.e. veins that would be
+     * auto-<b>adopted</b> (no deposit_type of their own). Surfaced in the Deposits tab
+     * so they can be customised / disabled. Sorted by id.
+     */
+    public static List<String> adoptableVeinIds() {
+        java.util.Set<String> referenced = new java.util.HashSet<>();
+        for (Draft d : drafts) {
+            for (DepositAuthoring.RecipeEntry e : d.veinRecipes) {
+                if (e.recipe != null && !e.recipe.isBlank()) referenced.add(e.recipe.trim());
+            }
+            if (d.veinRecipeInfinite != null && !d.veinRecipeInfinite.isBlank()) {
+                referenced.add(d.veinRecipeInfinite.trim());
+            }
+            if (d.hasVein && d.id != null && !d.id.isBlank()) {
+                ResourceLocation rid = ResourceLocation.tryParse(d.id.trim());
+                if (rid != null) referenced.add(rid.getNamespace() + ":" + rid.getPath() + "_vein");
+            }
+        }
+        List<String> out = new ArrayList<>();
+        for (String v : coeVeinIds) {
+            if (!referenced.contains(v)) out.add(v);
+        }
+        return out;
+    }
+
+    /**
+     * A draft that customises an adopted foreign vein: a {@code placement=coe} type
+     * whose <b>id equals the vein id</b>, so already-placed adopted deposits upgrade
+     * seamlessly once it loads. Seeded with the hash colour the adopted vein showed.
+     */
+    public static Draft adoptDraft(String veinId) {
+        Draft d = new Draft();
+        d.id = veinId;
+        d.placement = DepositType.Placement.COE;
+        d.veinRecipes.add(new DepositAuthoring.RecipeEntry(veinId, 1));
+        d.hasMapColor = true;
+        d.mapColor = defaultColorFor(veinId);
+        return d;
+    }
+
+    /** Hash colour matching the world-map renderer's fallback (so customising keeps the marker colour). */
+    private static int defaultColorFor(String id) {
+        int h = id.hashCode();
+        int r = 80 + ((h >>> 16) & 0x7F);
+        int g = 80 + ((h >>> 8) & 0x7F);
+        int b = 80 + (h & 0x7F);
+        return (r << 16) | (g << 8) | b;
+    }
+
+    /** Compact label for a vein id: drop COE's {@code ore_vein_type/} folder + trailing {@code _vein}. */
+    public static String shortVeinLabel(String veinId) {
+        String s = veinId;
+        int slash = s.lastIndexOf('/');
+        if (slash >= 0) s = s.substring(0, s.indexOf(':') + 1) + s.substring(slash + 1);
+        if (s.endsWith("_vein")) s = s.substring(0, s.length() - "_vein".length());
+        return s;
     }
 
     private static List<String> safe(Supplier<List<String>> src) {

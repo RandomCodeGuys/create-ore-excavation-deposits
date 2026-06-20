@@ -137,6 +137,10 @@ public final class DepositAuthoring {
         public int ticks = 100;
         public int stress = 256;
         public String drillTag = "";
+        /** Optional COE drillingFluid the drill CONSUMES per cycle. */
+        public boolean hasFluidInput = false;
+        public String fluidInput = "";           // fluid id, or "#namespace:tag"
+        public int fluidInputAmount = 1000;       // mB per cycle
     }
 
     /** Inline COE fluid-extraction spec — synthesised into an extracting recipe. */
@@ -146,6 +150,10 @@ public final class DepositAuthoring {
         public int ticks = 20;
         public int stress = 256;
         public String drillTag = "";
+        /** Optional COE drillingFluid the extractor CONSUMES per cycle (separate from its output). */
+        public boolean hasFluidInput = false;
+        public String fluidInput = "";
+        public int fluidInputAmount = 1000;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -472,6 +480,11 @@ public final class DepositAuthoring {
             d.drilling.ticks = dr.ticks();
             d.drilling.stress = dr.stress();
             d.drilling.drillTag = dr.drillTag().map(ResourceLocation::toString).orElse("");
+            dr.fluidInput().ifPresent(fi -> {
+                d.drilling.hasFluidInput = true;
+                d.drilling.fluidInput = fluidInputToString(fi);
+                d.drilling.fluidInputAmount = fi.amount();
+            });
         });
         t.extracting().ifPresent(ex -> {
             d.hasExtracting = true;
@@ -480,8 +493,36 @@ public final class DepositAuthoring {
             d.extracting.ticks = ex.ticks();
             d.extracting.stress = ex.stress();
             d.extracting.drillTag = ex.drillTag().map(ResourceLocation::toString).orElse("");
+            ex.fluidInput().ifPresent(fi -> {
+                d.extracting.hasFluidInput = true;
+                d.extracting.fluidInput = fluidInputToString(fi);
+                d.extracting.fluidInputAmount = fi.amount();
+            });
         });
         return d;
+    }
+
+    /** A {@link DepositType.FluidInputSpec} → the editor's "fluid id or #tag" string. */
+    private static String fluidInputToString(DepositType.FluidInputSpec fi) {
+        if (fi.fluid().isPresent()) return fi.fluid().get().toString();
+        if (fi.tag().isPresent()) return "#" + fi.tag().get();
+        return "";
+    }
+
+    /** Editor draft → an optional FluidInputSpec ({@code "#tag"} → tag, else a fluid id). */
+    private static Optional<DepositType.FluidInputSpec> fluidInputFromDraft(boolean has, String spec, int amount) {
+        if (!has || spec == null || spec.isBlank()) return Optional.empty();
+        String s = spec.trim();
+        if (s.startsWith("#")) {
+            ResourceLocation tag = ResourceLocation.tryParse(s.substring(1));
+            if (tag == null) return Optional.empty();
+            return Optional.of(new DepositType.FluidInputSpec(
+                    Optional.empty(), Optional.of(tag), Math.max(1, amount)));
+        }
+        ResourceLocation fluid = ResourceLocation.tryParse(s);
+        if (fluid == null) return Optional.empty();
+        return Optional.of(new DepositType.FluidInputSpec(
+                Optional.of(fluid), Optional.empty(), Math.max(1, amount)));
     }
 
     static DepositType toType(Draft d) {
@@ -540,7 +581,8 @@ public final class DepositAuthoring {
             Optional<ResourceLocation> drillTag = dr.drillTag.isBlank()
                     ? Optional.empty()
                     : Optional.ofNullable(ResourceLocation.tryParse(dr.drillTag.trim()));
-            drilling = Optional.of(new DepositType.DrillingSpec(outs, dr.ticks, dr.stress, drillTag));
+            drilling = Optional.of(new DepositType.DrillingSpec(outs, dr.ticks, dr.stress, drillTag,
+                    fluidInputFromDraft(dr.hasFluidInput, dr.fluidInput, dr.fluidInputAmount)));
         }
 
         Optional<DepositType.ExtractingSpec> extracting = Optional.empty();
@@ -553,7 +595,8 @@ public final class DepositAuthoring {
                         ? Optional.empty()
                         : Optional.ofNullable(ResourceLocation.tryParse(ex.drillTag.trim()));
                 extracting = Optional.of(new DepositType.ExtractingSpec(
-                        fluid, Math.max(1, ex.amount), Math.max(1, ex.ticks), Math.max(1, ex.stress), exDrillTag));
+                        fluid, Math.max(1, ex.amount), Math.max(1, ex.ticks), Math.max(1, ex.stress), exDrillTag,
+                        fluidInputFromDraft(ex.hasFluidInput, ex.fluidInput, ex.fluidInputAmount)));
             }
         }
 

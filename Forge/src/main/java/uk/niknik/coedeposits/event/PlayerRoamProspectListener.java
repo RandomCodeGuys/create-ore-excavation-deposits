@@ -50,8 +50,11 @@ import uk.niknik.coedeposits.store.DepositSavedData;
 public final class PlayerRoamProspectListener {
     private PlayerRoamProspectListener() {}
 
-    /** How often we re-check player positions for scan-enqueue + ON_DISCOVERY reveal — 200 ticks = 10 seconds. */
+    /** How often we re-check player positions for the (expensive) prospect scan-enqueue — 200 ticks = 10 seconds. */
     private static final int CHECK_INTERVAL_TICKS = 200;
+
+    /** How often we sweep ON_DISCOVERY reveals — 20 ticks ≈ 1s, so walking into a deposit reveals it promptly (cheap: O(deposits), short-circuits on already-revealed / wrong-mode). */
+    private static final int DISCOVERY_SWEEP_TICKS = 20;
 
     /** Per-player last position where we enqueued a scan; reset when player rejoins. */
     private static final Map<UUID, BlockPos> lastScanCenter = new HashMap<>();
@@ -73,7 +76,11 @@ public final class PlayerRoamProspectListener {
             ProspectScanQueue.INSTANCE.tickMaterialize(lvl, budget);
         }
 
-        if (server.getTickCount() % CHECK_INTERVAL_TICKS != 0) return;
+        long tick = server.getTickCount();
+        boolean doScan = tick % CHECK_INTERVAL_TICKS == 0;
+        boolean doDiscovery = tick % DISCOVERY_SWEEP_TICKS == 0;
+        if (!doScan && !doDiscovery) return;
+
         int prospectRadius = Config.PROSPECT_RADIUS.get();
         int discoveryRadius = Config.DISCOVERY_RADIUS_BLOCKS.get();
         long discoveryRadiusSq = (long) discoveryRadius * discoveryRadius;
@@ -86,7 +93,8 @@ public final class PlayerRoamProspectListener {
             BlockPos current = p.blockPosition();
 
             // Job 1: incremental prospect scan (enqueue — actual work is async).
-            if (prospectRadius > 0) {
+            // Expensive, so kept on the slow 200-tick cadence.
+            if (doScan && prospectRadius > 0) {
                 BlockPos last = lastScanCenter.get(p.getUUID());
                 if (last == null || distSq(last, current) > prospectTriggerSq) {
                     ProspectScanQueue.INSTANCE.enqueue(lvl, current, prospectRadius);
@@ -94,8 +102,11 @@ public final class PlayerRoamProspectListener {
                 }
             }
 
-            // Job 2: ON_DISCOVERY reveal sweep
-            tryRevealDiscoveryNear(lvl, p, current, discoveryRadiusSq);
+            // Job 2: ON_DISCOVERY / ON_PROXIMITY reveal sweep — fast cadence so
+            // "walk into it" reveals within ~1s.
+            if (doDiscovery) {
+                tryRevealDiscoveryNear(lvl, p, current, discoveryRadiusSq);
+            }
         }
     }
 
@@ -108,20 +119,41 @@ public final class PlayerRoamProspectListener {
         DepositSavedData store = DepositSavedData.get(lvl);
         if (store.all().isEmpty()) return;
         UUID pid = player.getUUID();
+        int proximityRadius = Config.PROXIMITY_REVEAL_BLOCKS.get();
+        long proximityRadiusSq = (long) proximityRadius * proximityRadius;
         for (Deposit dep : store.all().values()) {
-            // Filter 1: skip deposits this player already discovered.
+            // Filter 1: skip deposits this player already discovered (for
+            // ON_PROXIMITY the revealed set is just a "notified once" marker —
+            // visibility stays purely distance-based on the client).
             if (store.isRevealed(pid, dep.id())) continue;
-            // Filter 2: skip non-ON_DISCOVERY modes.
+            // Filter 2: mode dispatch — ON_PROSPECT is handled by
+            // VeinFinderListener, ALWAYS never needs a reveal.
             DepositType type = Coedeposits.DEPOSIT_TYPES.get(dep.typeId());
             Config.RevealMode mode = type != null ? type.effectiveReveal() : Config.REVEAL_MODE.get();
-            if (mode != Config.RevealMode.ON_DISCOVERY) continue;
-            // Filter 3: spatial proximity to any of the deposit's chunks.
-            if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
-            // Trigger the reveal — revealAndNotify is idempotent.
-            if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
-                if (Config.LOG_DISCOVERY.get()) {
-                    Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
-                            player.getName().getString(), dep.name());
+            if (mode == Config.RevealMode.ON_DISCOVERY) {
+                // Filter 3: spatial proximity to any of the deposit's chunks.
+                if (!withinAnyChunk(current, dep, discoveryRadiusSq)) continue;
+                // Trigger the reveal — revealAndNotify is idempotent (returns
+                // false if the reveal already happened in a race), so logging
+                // only fires on the genuine first discovery.
+                if (CoedepositsNetwork.revealAndNotify(lvl, player, dep)) {
+                    if (Config.LOG_DISCOVERY.get()) {
+                        Coedeposits.LOGGER.info("[coedeposits] {} discovered {} via walk",
+                                player.getName().getString(), dep.name());
+                    }
+                }
+            } else if (mode == Config.RevealMode.ON_PROXIMITY) {
+                // Personal chat notice when the player first comes within the
+                // proximity radius (the same radius the map filter uses). Always
+                // per-player regardless of reveal_scope — proximity visibility is
+                // inherently personal-by-distance, the chat just mirrors it.
+                if (!withinAnyChunk(current, dep, proximityRadiusSq)) continue;
+                if (store.reveal(pid, dep.id())) {
+                    CoedepositsNetwork.sendProximityNotice(lvl, player, dep);
+                    if (Config.LOG_DISCOVERY.get()) {
+                        Coedeposits.LOGGER.info("[coedeposits] {} came near {} (proximity notice)",
+                                player.getName().getString(), dep.name());
+                    }
                 }
             }
         }

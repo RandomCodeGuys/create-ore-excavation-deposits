@@ -48,6 +48,14 @@ public interface CoedepositsPlatform {
      */
     OreDataCapability.OreData oreDataNoPopulate(LevelChunk chunk);
 
+    /**
+     * True when a mod with the given id is present. Loader-abstracted: Forge
+     * {@code ModList.get().isLoaded} / Fabric {@code FabricLoader.isModLoaded}.
+     * Used by {@link uk.niknik.coedeposits.compat.TeamBridge} to gate its
+     * reflection-based OPAC / FTB-Teams integrations.
+     */
+    boolean isModLoaded(String modId);
+
     /** Lazily-resolved singleton — the first (and only) registered service impl. */
     final class Holder {
         private static volatile CoedepositsPlatform instance;

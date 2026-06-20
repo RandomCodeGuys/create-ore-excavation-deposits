@@ -305,6 +305,9 @@ public class BundledRecipePack extends AbstractPackResources {
         out.addProperty("ticks", drillSpec.has("ticks") ? drillSpec.get("ticks").getAsInt() : 100);
         out.addProperty("vein_id", veinId.toString());
 
+        // Optional INPUT fluid the drill consumes per cycle (COE drillingFluid).
+        addFluidInput(out, drillSpec);
+
         return out.toString();
     }
 
@@ -335,7 +338,40 @@ public class BundledRecipePack extends AbstractPackResources {
         out.addProperty("ticks", fluidSpec.has("ticks") ? fluidSpec.get("ticks").getAsInt() : 20);
         out.addProperty("vein_id", veinId.toString());
 
+        // Optional INPUT fluid the extractor consumes per cycle (COE drillingFluid),
+        // independent of the fluid it OUTPUTS above.
+        addFluidInput(out, fluidSpec);
+
         return out.toString();
+    }
+
+    /**
+     * Emit the optional COE {@code drillingFluid} input — recipe JSON key
+     * {@code "fluid"} — from our inline {@code fluid_input} sub-block
+     * ({@code {"fluid"|"tag": id, "amount": N}}). No-op when the block is absent
+     * or names neither a fluid nor a tag.
+     *
+     * <p><b>1.20.1 delta:</b> COE 1.20.1 (Create 6.0) reads the input fluid as a
+     * Create {@code com.simibubi.create.foundation.fluid.FluidIngredient} — a
+     * FLAT object {@code {"fluid": id, "amount": N}} (single) or
+     * {@code {"fluidTag": tag, "amount": N}} (tag) — NOT the 1.21 NeoForge nested
+     * {@code SizedFluidIngredient} ({@code {"ingredient": {...}, "amount": N}}).
+     */
+    private static void addFluidInput(JsonObject out, JsonObject spec) {
+        if (!spec.has("fluid_input") || !spec.get("fluid_input").isJsonObject()) return;
+        JsonObject fi = spec.getAsJsonObject("fluid_input");
+        JsonObject fluid = new JsonObject();
+        if (fi.has("tag") && fi.get("tag").isJsonPrimitive()) {
+            fluid.addProperty("fluidTag", fi.get("tag").getAsString());
+        } else if (fi.has("fluid") && fi.get("fluid").isJsonPrimitive()) {
+            fluid.addProperty("fluid", fi.get("fluid").getAsString());
+        } else {
+            Coedeposits.LOGGER.warn(
+                    "[coedeposits] inline fluid_input names neither a 'fluid' nor a 'tag' — skipped");
+            return;
+        }
+        fluid.addProperty("amount", fi.has("amount") ? fi.get("amount").getAsInt() : 1000);
+        out.add("fluid", fluid);
     }
 
     /** Fluid id → its bucket item id for a vein icon (water → minecraft:water_bucket). */

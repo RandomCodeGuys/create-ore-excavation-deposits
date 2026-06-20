@@ -35,6 +35,11 @@ bin/
 ### Minecraft Modding ###
 run/
 !**/src/**/run/
+# Extra dev-runtime working dirs: the second-player client (runClient2 / Loom client2)
+# and any leftover NeoForge run-client2 from the main line — never shipped, like run/.
+run2/
+run-client2/
+!**/src/**/run2/
 **/src/generated/**/.cache/
 repo/
 !**/src/**/repo/

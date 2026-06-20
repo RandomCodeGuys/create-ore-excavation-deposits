@@ -100,6 +100,7 @@ Save, run `/reload` — the new ore spawns with a synthetic `mymod:platinum_vein
 | `ticks` | int | `100` | Drill cycle duration |
 | `stress` | int | `256` | Create stress units required |
 | `drill_tag` | item-tag id | `createoreexcavation:drills` | Drill ingredient |
+| `fluid_input` | `{fluid \| tag, amount}` | _none_ | **0.2+** — optional INPUT fluid the drill consumes per cycle (COE `drillingFluid`). One of `fluid` (id) or `tag` (fluid tag) + `amount` in mB (default 1000). |
 
 ### Inline `fluid` schema (0.1.4+)
 
@@ -112,6 +113,7 @@ A deposit can yield a **fluid** instead of (or alongside) items — harvested wi
 | `ticks` | int | `20` | Extraction cycle duration |
 | `stress` | int | `256` | Create stress units the extractor consumes |
 | `drill_tag` | item-tag id | `createoreexcavation:drills` | Drill-head ingredient the extractor accepts |
+| `fluid_input` | `{fluid \| tag, amount}` | _none_ | **0.2+** — optional INPUT fluid the extractor consumes per cycle (COE `drillingFluid`), separate from the fluid it outputs. One of `fluid` (id) or `tag` + `amount` in mB (default 1000). |
 
 When a `fluid:` block is present and the vein has no explicit `icon`, the vein-finder icon defaults to the fluid's bucket (mirroring COE's own water extractor). A deposit may carry **both** `drilling:` and `fluid:` — the vein can then be drilled for items *or* pumped for fluid.
 
@@ -141,7 +143,7 @@ Example — an underground water spring, drilled in swamp biomes:
 
 (For a modded fluid, pick its bucket in the editor's item picker rather than guessing the id. `minecraft:lava` is the other vanilla source fluid.)
 
-> **Bundled example.** The mod ships a ready `coedeposits:example_water` deposit — a finite "Underground Spring" of `minecraft:water` extracted with COE's Extractor — so the fluid path works the moment you install the mod. It generates in overworld swamp/plains biomes at `weight: 50`; turn it off from the in-game editor (or a `{"enabled": false}` overlay) if you don't want it. Note it ships as plain **datapack** files (`deposit_type/example_water.json` + `recipe/example_water_{vein,extracting}.json`), *not* an inline `fluid:` block — a datapack-supplied type must reference real recipes, since inline synthesis only runs for the config overlay.
+> **Bundled example.** The mod ships a ready `coedeposits:water` deposit — a finite "Underground Spring" of `minecraft:water` extracted with COE's Extractor — so the fluid path works the moment you install the mod. It generates in overworld swamp/plains biomes at `weight: 50`; turn it off from the in-game editor (or a `{"enabled": false}` overlay) if you don't want it. Note it ships as plain **datapack** files (`deposit_type/water.json` + `recipes/water_{vein,extracting}.json`), *not* an inline `fluid:` block — a datapack-supplied type must reference real recipes, since inline synthesis only runs for the config overlay.
 
 ### Recipe id derivation
 
@@ -191,16 +193,20 @@ Per-deposit replenish overrides via `/coedeposits replenish <rate>` (or `repleni
 | **Create Ore Excavation** (`createoreexcavation`) | **Required** | We subclass COE's `RandomSpreadGenerator` and swap the static `OreVeinGenerator.picker` via reflection (the field is opened by an AccessTransformer). |
 | **Xaero's World Map** (`xaeroworldmap`) | Soft | Mixin into `xaero.map.gui.GuiMap.render` (TAIL) draws the overlay + adds the toggle widget. Mixin is gated `client`-only via `coedeposits.mixins.json` so dedicated servers skip it. |
 | **Xaero's Minimap** (`xaerominimap`) | Soft | `XaeroBridge` does a best-effort reflective waypoint add on deposit discovery; if Xaero's API drifts it falls back silently to the click-to-suggest `/tp` chat message. |
-| **YACL** (`yet_another_config_lib_v3`) | Soft | When present, powers the config screen + in-game deposit editor; absent, the mod cedes to an auto-screen mod or NeoForge's native config screen. Client-only. |
+| **YACL** (`yet_another_config_lib_v3`) | Soft | When present, powers the config screen + in-game deposit editor; absent, the in-game editor is simply unavailable (the mod still runs). Client-only. |
+| **Open Parties and Claims** / **FTB Teams** | Soft | Back the `reveal_scope: TEAM` mode — `TeamBridge` resolves the discoverer's party/team by reflection (OPAC, else FTB Teams, else the vanilla scoreboard team). No hard dependency. |
+| **KubeJS** (`kubejs`) | Soft | Optional `CoeDeposits` script binding to define deposit types from `kubejs/startup_scripts` (see [KubeJS](#kubejs)). Absent, the mod is unaffected. |
+| **COE add-ons** — Create Ore Excavation Plus, CoE × Mekanism, OreCompatCreate, … | Auto | Any COE vein recipe they ship is **auto-adopted** onto the world map (toggle: `auto_adopt_coe_veins`). Their fluid-gated drilling recipes are supported via `fluid_input`. |
 
 ## Commands
 
-All `/coedeposits` subcommands require permission level 2 (standard OP — granted by `/op <player>`).
+Most `/coedeposits` subcommands require permission level 2 (standard OP — granted by `/op <player>`). The **`share` / `accept`** pair is open to everyone — any player can share a deposit they can see, and `accept` is what the clickable chat button runs.
 
 | Command | Description |
 |---|---|
 | `/coedeposits tier` | Show distance-from-spawn and tier fraction at the current position. |
 | `/coedeposits list` | Top-10 nearest known deposits in the current dimension. |
+| `/coedeposits types` | Roster of deposit **types** in the current dimension — declared (managed/coe) plus auto-**adopted** foreign COE veins — with placed counts. The audit view for what `auto_adopt_coe_veins` pulled onto the map. |
 | `/coedeposits here` | Info about the deposit owning the player's current chunk. |
 | `/coedeposits scan` | Re-run the prospect-scan around the player at the configured `prospect_radius`. Useful after editing `deposits.json` + `/reload`. |
 | `/coedeposits regenerate [seed]` | Wipe the current dimension's deposits and run a fresh prospect-scan. Pass an optional seed to lock placement to a specific RNG and reproduce the pattern elsewhere. |
@@ -212,6 +218,9 @@ All `/coedeposits` subcommands require permission level 2 (standard OP — grant
 | `/coedeposits place [<type> [<pos> [<amount> [<chunks>]]]]` | Admin-place a deposit. `amount<0` → infinite vein (requires `vein_recipe_infinite`); `amount>0` → exact unit budget; `chunks` overrides natural blob size (default 5). |
 | `/coedeposits replenish <rate>` | Set per-deposit replenishment override on the deposit at the player's chunk. `rate` is units/hour; `0` clears the override (deposit reverts to its type's default). |
 | `/coedeposits replenish all <rate>` | Same but applied to every deposit in the current dimension. |
+| `/coedeposits share` | *(no OP)* Post a clickable **[✚ Add to map]** offer for the deposit you stand in — anyone in the dimension can click it to add the deposit + an Xaero waypoint. |
+| `/coedeposits share <player>` · `share all <player>` | *(no OP)* Share the deposit you stand in (or everything you've discovered) directly with one online player. |
+| `/coedeposits accept <id>` | *(no OP)* Accept a shared-deposit offer — the **[✚ Add to map]** chat button runs this for you. |
 
 ## Deposit types — datapack + config overlay
 
@@ -331,6 +340,28 @@ And the drilling recipe — `data/<ns>/recipe/<name>_drilling.json`:
 }
 ```
 
+## KubeJS
+
+With **KubeJS** installed, define deposit types from a script instead of a JSON file — the `CoeDeposits` binding mirrors how Create Ore Excavation exposes its recipes to KubeJS. Put this in `kubejs/startup_scripts/` (runs once at launch):
+
+```js
+CoeDeposits.add('mypack:ruby', {
+  vein_recipes: [{ recipe: 'mypack:ruby_vein', weight: 1 }],
+  placement: 'managed',
+  dimensions: 'minecraft:overworld',
+  distance: { min: 2000, max: 99999 },
+  size_chunks: { min: 4, max: 12 },
+  per_chunk_units: { min: 20000, max: 120000 },
+  weight: 80,
+  map_color: 14689625,
+  biome_filter: ['c:is_mountain']
+})
+```
+
+The object is the exact `deposit_type` schema documented above. Scripted types merge **between** the datapack defaults and the `deposits.json` overlay (a hand-edited overlay still wins). Like datapack types, a scripted type must reference a real `vein_recipe` — inline `vein:` / `drilling:` / `fluid:` synthesis only runs for the on-disk config overlay (build the recipe with COE's own KubeJS API if you need one, then reference it). `CoeDeposits.remove('mypack:ruby')` drops one. KubeJS is an optional dependency — without it the binding simply isn't present and the mod is unaffected.
+
+> On this 1.20.1 line the binding targets **KubeJS `2001.6.5`+** and is registered through a `kubejs.plugins.txt` plugin; older 2001.x builds that still expose `BindingsEvent` work too.
+
 ## Mod config
 
 ### Server-side — `coedeposits-common.toml`
@@ -347,6 +378,13 @@ And the drilling recipe — `data/<ns>/recipe/<name>_drilling.json`:
 | `proximity_reveal_blocks` | 256 | Visibility radius for `ON_PROXIMITY` (client-side filter). |
 | `discovery_radius_blocks` | 24 | Trigger radius for `ON_DISCOVERY` — the player must come this close to any chunk of the deposit. |
 | `enabled_dimensions` | `[overworld, the_nether, the_end]` | Dimensions where the mod is active. Others fall through to vanilla COE behaviour. |
+| `reveal_scope` | `PER_PLAYER` | Who a per-player discovery (`ON_DISCOVERY` / `ON_PROSPECT`) reveals to: `PER_PLAYER` (private, COE-like), `TEAM` (the discoverer's OPAC / FTB Teams / scoreboard team, live), `GLOBAL` (first finder reveals for everyone). No effect on `ALWAYS` / `ON_PROXIMITY`. |
+| `discovery_chat` | `true` | Send the discovery chat line on reveal. Off keeps the map marker / Xaero waypoint, just no chat line. |
+| `discovery_message_format` | `Discovered %name% at %pos%` | Template for that line. Placeholders: `%name%`, `%pos%` (clickable /tp), `%x% %y% %z%`, `%type%`, `%player%` (discoverer, GLOBAL only), `%%`; `§` colour codes work. |
+| `auto_adopt_coe_veins` | `true` | Adopt COE vein recipes that have no coedeposits `deposit_type` (from add-ons / datapacks) onto the world map: we own their OreData, track and render them like declared deposits. Off = they stay pure vanilla COE (generate but invisible to our map / finder). |
+| `coe_veins_disabled_by_default` | `true` | Disable the **base** Create Ore Excavation mod's bundled veins (`createoreexcavation:*`) — this mod's managed deposits replace them, so both generating would duplicate every ore. Add-on / datapack veins (other namespaces) are unaffected and still auto-adopt. A promoted (declared) type referencing a base vein overrides the disable. |
+| `enabled_veins` | `[]` | Per-vein exceptions to `coe_veins_disabled_by_default` — base-COE vein ids listed here generate again. Managed by the editor's **Enable** button on a default-disabled vein. |
+| `disabled_veins` | `[]` | COE vein recipe ids to **disable** explicitly — they won't generate or be adopted. Managed by the in-game editor (Deposits → vein → Disable). (Managed coedeposits ores are turned off by disabling their `deposit_type` instead.) |
 
 ### Client-side — `coedeposits-client.toml`
 

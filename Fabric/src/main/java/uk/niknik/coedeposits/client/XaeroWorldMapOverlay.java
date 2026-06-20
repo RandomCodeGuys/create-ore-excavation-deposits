@@ -1,10 +1,21 @@
 package uk.niknik.coedeposits.client;
 
+import io.netty.buffer.Unpooled;
+
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
+
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
 
 import uk.niknik.coedeposits.ClientConfig;
 import uk.niknik.coedeposits.mixin.GuiMapAccessor;
 import uk.niknik.coedeposits.mixin.ScreenInvoker;
+import uk.niknik.coedeposits.network.DepositSharePayload;
 
 import xaero.map.gui.GuiMap;
 
@@ -61,6 +72,27 @@ public final class XaeroWorldMapOverlay {
                         scr, graphics, mouseX, mouseY,
                         acc.coedeposits$scale(), acc.coedeposits$cameraX(), acc.coedeposits$cameraZ(),
                         acc.coedeposits$mouseBlockPosX(), acc.coedeposits$mouseBlockPosZ());
+            });
+
+            // Share keybind on the map screen: vanilla doesn't poll KeyMappings
+            // while a Screen is open, so catch the raw key here and act when a
+            // deposit is hovered (returning false consumes the key). Lives in the
+            // Xaero-gated overlay because it shares the deposit hovered on Xaero's map.
+            ScreenKeyboardEvents.allowKeyPress(screen).register((scr, key, scancode, modifiers) -> {
+                KeyMapping share = CoedepositsFabricClient.SHARE_DEPOSIT;
+                if (share.isUnbound() || !share.matches(key, scancode)) return true;
+                java.util.UUID id = WorldMapDepositRenderer.hoveredDepositId(scr);
+                if (id == null) return true;  // nothing hovered
+                FriendlyByteBuf buf = new FriendlyByteBuf(Unpooled.buffer());
+                new DepositSharePayload(id).encode(buf);
+                ClientPlayNetworking.send(DepositSharePayload.CHANNEL, buf);
+                Minecraft mc = Minecraft.getInstance();
+                if (mc.player != null) {
+                    mc.player.displayClientMessage(
+                            Component.literal("[coedeposits] share offer posted to chat")
+                                    .withStyle(ChatFormatting.GREEN), true /* actionbar */);
+                }
+                return false;  // consume — don't let the map also handle the key
             });
         });
     }

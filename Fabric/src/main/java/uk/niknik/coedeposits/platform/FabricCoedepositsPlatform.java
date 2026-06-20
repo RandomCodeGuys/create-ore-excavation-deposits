@@ -28,4 +28,9 @@ public final class FabricCoedepositsPlatform implements CoedepositsPlatform {
     public OreDataCapability.OreData oreDataNoPopulate(LevelChunk chunk) {
         return OreDataCapability.getData(chunk);
     }
+
+    @Override
+    public boolean isModLoaded(String modId) {
+        return FabricLoader.getInstance().isModLoaded(modId);
+    }
 }

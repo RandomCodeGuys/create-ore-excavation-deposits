@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.ResourceLocation;
@@ -58,25 +59,43 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     /** Cached recipe-id → COE-mode type id, used by the picker's COE delegation branch. */
     private volatile Map<ResourceLocation, ResourceLocation> byCoeVeinRecipe = Map.of();
 
+    /**
+     * Lazily-built implicit COE-placement types for vein recipes that no
+     * declared {@link DepositType} owns — the {@code auto_adopt_coe_veins}
+     * path (add-on / datapack veins). Keyed by, and id-equal to, the vein
+     * recipe id, so a {@link Deposit} adopting one stores that vein id as its
+     * {@code typeId} and {@link #get} resolves it transparently. Cleared on
+     * every {@link #apply} (a reload may now declare the type, or the recipe
+     * may be gone). Concurrent because the picker can adopt on a chunk-load
+     * thread while another chunk loads.
+     */
+    private final Map<ResourceLocation, DepositType> implicitTypes = new ConcurrentHashMap<>();
+
     /** Off-thread reload result: merged registry plus per-layer counts for logging. */
-    public record Prepared(Map<ResourceLocation, DepositType> types, int datapackCount, int overlayCount) {}
+    public record Prepared(Map<ResourceLocation, DepositType> types, int datapackCount, int scriptedCount, int overlayCount) {}
 
     @Override
     protected Prepared prepare(ResourceManager mgr, ProfilerFiller profiler) {
         Map<ResourceLocation, DepositType> merged = new HashMap<>();
         int datapackCount = loadDatapackTypes(mgr, merged);
+        int scriptedCount = loadScriptedTypes(merged);
         int overlayCount = loadConfigOverlay(merged);
-        return new Prepared(merged, datapackCount, overlayCount);
+        return new Prepared(merged, datapackCount, scriptedCount, overlayCount);
     }
 
     @Override
     protected void apply(Prepared prepared, ResourceManager mgr, ProfilerFiller profiler) {
         types = Map.copyOf(prepared.types());
         rebuildIndexes(prepared.types());
+        // Drop adopted implicit types — a reload may now declare a real type for
+        // a vein, change its recipe, or remove it; stale implicit copies would
+        // otherwise shadow the declared one in get().
+        implicitTypes.clear();
         if (Config.LOG_LIFECYCLE.get()) {
             Coedeposits.LOGGER.info(
-                    "[coedeposits] loaded {} deposit types ({} datapack + {} config-overlay override(s)): {}",
-                    types.size(), prepared.datapackCount(), prepared.overlayCount(), types.keySet());
+                    "[coedeposits] loaded {} deposit types ({} datapack + {} KubeJS + {} config-overlay override(s)): {}",
+                    types.size(), prepared.datapackCount(), prepared.scriptedCount(),
+                    prepared.overlayCount(), types.keySet());
         }
         for (DepositConfigValidator.Issue issue : DepositConfigValidator.validateStructure(types)) {
             if (issue.severity() == DepositConfigValidator.Severity.ERROR) {
@@ -104,6 +123,28 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
             } catch (Exception ex) {
                 Coedeposits.LOGGER.error("[coedeposits] failed reading datapack deposit_type '{}': {}",
                         id, ex.toString());
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Merge KubeJS-script-registered types ({@link ScriptedDepositRegistry}) over
+     * the datapack layer — same parse + inline-binding + junk-pruning as the
+     * datapack path. A no-op when KubeJS isn't installed (the registry is then
+     * always empty), so this stays free for vanilla setups.
+     *
+     * @return number of scripted types merged
+     */
+    private static int loadScriptedTypes(Map<ResourceLocation, DepositType> out) {
+        int count = 0;
+        for (Map.Entry<ResourceLocation, com.google.gson.JsonObject> e : ScriptedDepositRegistry.snapshot().entrySet()) {
+            Optional<DepositType> parsed = DepositType.CODEC.parse(JsonOps.INSTANCE, e.getValue())
+                    .resultOrPartial(err -> Coedeposits.LOGGER.error(
+                            "[coedeposits] KubeJS deposit type '{}' failed to parse: {}", e.getKey(), err));
+            if (parsed.isPresent()) {
+                out.put(e.getKey(), bindInlineRecipe(e.getKey(), parsed.get()));
+                count++;
             }
         }
         return count;
@@ -212,9 +253,46 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
         return types;
     }
 
-    /** Lookup a single type by id. {@code null} if not loaded. */
+    /**
+     * Lookup a single type by id. Falls back to the implicit (auto-adopted)
+     * type table so a {@link Deposit} that adopted a foreign COE vein — whose
+     * {@code typeId} is the vein id — still resolves its type for snapshots,
+     * the finder, refill, depletion, etc. {@code null} only if neither a
+     * declared nor an adopted type exists for the id.
+     */
     public DepositType get(ResourceLocation id) {
-        return types.get(id);
+        DepositType t = types.get(id);
+        return t != null ? t : implicitTypes.get(id);
+    }
+
+    /**
+     * Get (or lazily build) the implicit COE-placement type for a vein recipe
+     * that no declared type owns — the {@code auto_adopt_coe_veins} path. The
+     * type's id is the vein id itself; it carries a single-recipe pool, COE
+     * placement, single-chunk size and otherwise inert defaults (the OreData
+     * amount/finite all come from the vein recipe). Idempotent + concurrent.
+     */
+    public DepositType adoptImplicit(ResourceLocation veinId) {
+        return implicitTypes.computeIfAbsent(veinId, DepositTypeLoader::buildImplicit);
+    }
+
+    /** Construct the default implicit COE type for {@code veinId}. See {@link #adoptImplicit}. */
+    private static DepositType buildImplicit(ResourceLocation veinId) {
+        return new DepositType(
+                List.of(new DepositType.WeightedRecipe(veinId, 1)),
+                Optional.empty(),                                   // veinRecipeInfinite
+                List.of(),                                          // fillers
+                0.0,                                                // replenishRatePerHour
+                DepositType.Placement.COE,                          // generation: COE spread
+                new DepositType.IntRange(0, Integer.MAX_VALUE),     // distance: any
+                new DepositType.IntRange(1, 1),                     // size: single chunk
+                new DepositType.PerChunkUnits(0L, Optional.of(0L)), // per-chunk units: unused for COE
+                0,                                                  // weight: inert in the managed roll
+                Optional.empty(),                                   // map_color → typeId-hash fallback
+                List.of(),                                          // biome_filter: any
+                Optional.empty(),                                   // reveal → global default
+                List.of(),                                          // dimensions: any
+                Optional.empty(), Optional.empty(), Optional.empty()); // no inline vein/drilling/fluid
     }
 
     /** Set of vein_recipe ids consumed by MANAGED types — picker discards COE's natural placement of these. */
@@ -225,5 +303,10 @@ public class DepositTypeLoader extends SimplePreparableReloadListener<DepositTyp
     /** Look up the COE-mode type id whose vein_recipe matches the given id, or {@code null}. */
     public ResourceLocation coeTypeIdForVeinRecipe(ResourceLocation veinRecipe) {
         return byCoeVeinRecipe.get(veinRecipe);
+    }
+
+    /** True when at least one declared {@code placement=coe} type owns a vein recipe. */
+    public boolean hasCoePlacementType() {
+        return !byCoeVeinRecipe.isEmpty();
     }
 }

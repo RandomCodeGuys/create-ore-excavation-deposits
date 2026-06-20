@@ -31,6 +31,10 @@ repositories {
     maven { url = 'https://raw.githubusercontent.com/Fuzss/modresources/main/maven/' } // forge-config-api-port (fuzs mirror)
     maven { url = 'https://maven.shedaniel.me/' }                               // (Registrate transitive / cloth)
     maven { url = 'https://maven.architectury.dev/' }                           // Architectury (Registrate-fabric transitive)
+    maven {
+        url = 'https://maven.latvian.dev/releases'                              // KubeJS + Rhino (OPTIONAL script integration)
+        content { includeGroup 'dev.latvian.mods' }
+    }
     maven { url = 'https://raw.githubusercontent.com/tom5454/maven/main' }      // ChunkStorageFabric (COE OreData backend)
     maven {
         url = 'https://maven.jamieswhiteshirt.com/libs-release'                 // reach-entity-attributes (Porting-Lib transitive)
@@ -150,6 +154,19 @@ dependencies {
 
     // findbugs jsr305 — @Nullable used by platform-shared/pack/BundledRecipePack.java.
     compileOnly "com.google.code.findbugs:jsr305:3.0.2"
+
+    // ── KubeJS — OPTIONAL script integration (platform-shared kubejs/* plugin + binding) ─
+    // modCompileOnly: players supply KubeJS at runtime; the plugin is discovered (via
+    // kubejs.plugins.txt) only when KubeJS is installed. KubeJS 2001.6.5 (1.20.1) needs Rhino
+    // 2001.2.2 on the compile classpath (BindingsEvent's Scriptable); Architectury 9.1.12 is
+    // already declared above (Registrate-fabric transitive).
+    modCompileOnly "dev.latvian.mods:kubejs-fabric:2001.6.5-build.26"
+    modCompileOnly "dev.latvian.mods:rhino-fabric:2001.2.2-build.17"
+    // ...and at DEV RUNTIME so the CoeDeposits binding actually loads in runClient and
+    // `CoeDeposits.add(...)` is testable on Fabric too. Architectury 9.1.12 is already a full
+    // modImplementation (Registrate-fabric transitive), so it's on the runtime classpath.
+    modLocalRuntime "dev.latvian.mods:kubejs-fabric:2001.6.5-build.26"
+    modLocalRuntime "dev.latvian.mods:rhino-fabric:2001.2.2-build.17"
 }
 
 // ── Shared loader-agnostic core (mirrors COE's Fabric srcDir of ../Forge/src/platform-shared) ──
@@ -193,6 +210,17 @@ loom {
     // Loom auto-generates the runClient / runServer tasks. In IntelliJ the Fabric client
     // appears as the run config "coedeposits-fabric-1.20 [runClient]" — the Fabric counterpart
     // to Forge's runClient (Forge/build.gradle minecraft { runs { client } }).
+    runs {
+        // Second dev client (Dev2) for two-player testing of reveal_scope / sharing / team
+        // reveal — inherits the auto-generated `client` run but uses its own run2/ working
+        // dir + a distinct offline username, so Dev1 can Open-to-LAN and Dev2 joins via Direct
+        // Connect → localhost:<port>. Generates the `runClient2` task.
+        client2 {
+            inherit client
+            runDir "run2"
+            programArgs "--username", "Dev2"
+        }
+    }
 }
 
 processResources {

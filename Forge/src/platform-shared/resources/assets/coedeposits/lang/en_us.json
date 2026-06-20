@@ -1,6 +1,7 @@
 {
   "key.categories.coedeposits": "Coe Deposits",
   "key.coedeposits.toggle_overlay": "Toggle deposits overlay",
+  "key.coedeposits.share_deposit": "Share hovered deposit to chat",
 
   "coedeposits.map.toggle.button": "Toggle deposits overlay",
   "coedeposits.map.toggle.tooltip.on": "Deposits overlay: ON",
@@ -12,6 +13,7 @@
   "coedeposits.tooltip.drill_yields_header": "Drill yields:",
   "coedeposits.tooltip.replenishing": "Replenishing: %s/h",
   "coedeposits.tooltip.chunk_filler": "Tailings — no ore in this chunk",
+  "coedeposits.tooltip.chunk_missing": "Vein recipe not loaded (check datapack/config)",
   "coedeposits.tooltip.chunk_unknown": "Remaining: unknown (chunk not loaded)",
   "coedeposits.tooltip.chunk_depleted": "Depleted",
   "coedeposits.tooltip.chunk_infinite": "Infinite vein",

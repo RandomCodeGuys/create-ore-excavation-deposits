@@ -56,6 +56,18 @@ public final class CoedepositsFabricClient implements ClientModInitializer {
             GLFW.GLFW_KEY_UNKNOWN,
             "key.categories.coedeposits");
 
+    /**
+     * Share the deposit hovered on the Xaero world map to chat (clickable
+     * [+ Add to map] offer). Default unbound; handled at the map-screen level in
+     * {@link XaeroWorldMapOverlay} (vanilla doesn't poll KeyMappings while a
+     * Screen is open).
+     */
+    public static final KeyMapping SHARE_DEPOSIT = new KeyMapping(
+            "key.coedeposits.share_deposit",
+            InputConstants.Type.KEYSYM,
+            GLFW.GLFW_KEY_UNKNOWN,
+            "key.categories.coedeposits");
+
     @Override
     public void onInitializeClient() {
         // ── CLIENT config spec (ForgeConfigSpec via Forge Config API Port) ──
@@ -64,8 +76,9 @@ public final class CoedepositsFabricClient implements ClientModInitializer {
                 net.minecraftforge.fml.config.ModConfig.Type.CLIENT,
                 ClientConfig.SPEC);
 
-        // ── Toggle keybind ──────────────────────────────────────────────────
+        // ── Keybinds (toggle overlay + share hovered deposit) ───────────────
         KeyBindingHelper.registerKeyBinding(TOGGLE_OVERLAY);
+        KeyBindingHelper.registerKeyBinding(SHARE_DEPOSIT);
 
         // ── Xaero World Map overlay + toggle button (OPTIONAL dep) ──────────
         // Xaero is under fabric.mod.json "suggests". Register the overlay ONLY when

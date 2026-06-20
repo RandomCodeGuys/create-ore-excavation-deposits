@@ -4,6 +4,7 @@ import java.nio.file.Path;
 
 import net.minecraft.world.level.chunk.LevelChunk;
 
+import net.minecraftforge.fml.ModList;
 import net.minecraftforge.fml.loading.FMLPaths;
 
 import com.tom.createores.OreDataCapability;
@@ -26,5 +27,10 @@ public final class ForgeCoedepositsPlatform implements CoedepositsPlatform {
     @Override
     public OreDataCapability.OreData oreDataNoPopulate(LevelChunk chunk) {
         return chunk.getCapability(OreDataCapability.ORE_CAP).orElse(null);
+    }
+
+    @Override
+    public boolean isModLoaded(String modId) {
+        return ModList.get().isLoaded(modId);
     }
 }
